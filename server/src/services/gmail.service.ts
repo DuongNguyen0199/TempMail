@@ -123,7 +123,7 @@ export async function searchAllInboxes(
   if (accounts.length === 0) {
     return { data: [], pagination: { page: filters.page, limit: filters.limit, total: 0, pages: 1 } };
   }
-  const accountEmails = accounts.map((a) => a.email.toLowerCase());
+  const accountEmails = accounts.map((a: any) => a.email.toLowerCase());
   const where: Prisma.InboxMessageWhereInput = {
     userId,
     email: { in: accountEmails },
