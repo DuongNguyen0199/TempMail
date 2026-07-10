@@ -1,0 +1,98 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DB_CONNECTION_STRING")
+}
+
+model User {
+  id            String          @id @default(cuid())
+  email         String          @unique
+  username      String?
+  passwordHash  String
+  inboxTimestamp BigInt         @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  apiConfigs    UserApiConfig[]
+  gmailAccounts GmailAccount[]
+  inboxMessages InboxMessage[]
+  fetchLogs     FetchLog[]
+
+  @@map("users")
+}
+
+model UserApiConfig {
+  id              String   @id @default(cuid())
+  userId          String
+  provider        String   @default("sonjj_smailpro")
+  apiKeyEncrypted String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+  @@index([userId])
+  @@map("user_api_configs")
+}
+
+model GmailAccount {
+  id           String         @id @default(cuid())
+  userId       String
+  email        String
+  type         String?
+  password     String?
+  timestamp    BigInt?
+  rawJson      Json?
+  lastSyncedAt DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages     InboxMessage[]
+
+  @@unique([userId, email])
+  @@index([userId, updatedAt])
+  @@map("gmail_accounts")
+}
+
+model InboxMessage {
+  id             String       @id @default(cuid())
+  userId         String
+  gmailAccountId String
+  email          String
+  mid            String
+  sender         String?
+  subject        String?
+  snippet        String?
+  receivedAt     DateTime?
+  receivedTs     BigInt?
+  isRead         Boolean      @default(false)
+  body           String?
+  rawInboxJson   Json?
+  rawMessageJson Json?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gmailAccount   GmailAccount @relation(fields: [gmailAccountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email, mid])
+  @@index([userId, email, receivedAt])
+  @@index([gmailAccountId, receivedAt])
+  @@map("inbox_messages")
+}
+
+model FetchLog {
+  id            String   @id @default(cuid())
+  userId        String
+  action        String
+  endpoint      String
+  requestParams Json?
+  status        String
+  errorMessage  String?
+  createdAt     DateTime @default(now())
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("fetch_logs")
+}
