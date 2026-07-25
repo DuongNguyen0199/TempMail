@@ -41,6 +41,9 @@ export type AutoForwardConfig = {
   enabled: boolean;
   targetEmail: string;
   subjects: string[];
+  mailProvider: "smtp" | "resend" | "brevo";
+  fromEmail?: string;
+  apiSecretConfigured?: boolean;
   smtpHost: string;
   smtpPort: number;
   smtpSecure: boolean;

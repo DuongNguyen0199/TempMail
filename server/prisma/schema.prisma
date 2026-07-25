@@ -41,19 +41,22 @@ model UserApiConfig {
 }
 
 model AutoForwardConfig {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  enabled           Boolean  @default(true)
-  targetEmail       String   @default("duongrbt@gmail.com")
-  subjectsJson      String   @default("[\"OutSystems Certification Voucher\",\"Thank you for being part of the OutSystems Referral Program!\"]")
-  smtpHost          String?  @default("smtp.gmail.com")
-  smtpPort          Int?     @default(587)
-  smtpSecure        Boolean? @default(false)
-  smtpUser          String?
-  smtpPassEncrypted String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  enabled            Boolean  @default(true)
+  targetEmail        String   @default("duongrbt@gmail.com")
+  subjectsJson       String   @default("[\"OutSystems Certification Voucher\",\"Thank you for being part of the OutSystems Referral Program!\"]")
+  mailProvider       String   @default("smtp")
+  fromEmail          String?
+  apiSecretEncrypted String?
+  smtpHost           String?  @default("smtp.gmail.com")
+  smtpPort           Int?     @default(587)
+  smtpSecure         Boolean? @default(false)
+  smtpUser           String?
+  smtpPassEncrypted  String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("auto_forward_configs")
 }

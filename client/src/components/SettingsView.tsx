@@ -50,6 +50,11 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
   const [subjectsText, setSubjectsText] = useState(
     "OutSystems Certification Voucher\nThank you for being part of the OutSystems Referral Program!"
   );
+  const [mailProvider, setMailProvider] = useState<"smtp" | "resend" | "brevo">("resend");
+  const [fromEmail, setFromEmail] = useState("onboarding@resend.dev");
+  const [apiSecret, setApiSecret] = useState("");
+  const [visibleApiSecret, setVisibleApiSecret] = useState(false);
+
   const [smtpHost, setSmtpHost] = useState("smtp.gmail.com");
   const [smtpPort, setSmtpPort] = useState(587);
   const [smtpSecure, setSmtpSecure] = useState(false);
@@ -76,6 +81,8 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
         setEnabled(forwardConfig.enabled);
         setTargetEmail(forwardConfig.targetEmail || "duongrbt@gmail.com");
         setSubjectsText((forwardConfig.subjects || []).join("\n"));
+        setMailProvider(forwardConfig.mailProvider || "resend");
+        setFromEmail(forwardConfig.fromEmail || "onboarding@resend.dev");
         setSmtpHost(forwardConfig.smtpHost || "smtp.gmail.com");
         setSmtpPort(forwardConfig.smtpPort || 587);
         setSmtpSecure(forwardConfig.smtpSecure || false);
@@ -182,6 +189,9 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
           enabled,
           targetEmail,
           subjects,
+          mailProvider,
+          fromEmail,
+          ...(apiSecret ? { apiSecret } : {}),
           smtpHost,
           smtpPort,
           smtpSecure,
@@ -191,6 +201,7 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
       });
       setAutoForwardConfig(result);
       setSmtpPass("");
+      setApiSecret("");
       notify("Đã lưu cấu hình tự động gửi email.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Không thể lưu cấu hình gửi mail.", "error");
@@ -206,6 +217,9 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
         method: "POST",
         body: JSON.stringify({
           targetEmail,
+          mailProvider,
+          fromEmail,
+          ...(apiSecret ? { apiSecret } : {}),
           smtpHost,
           smtpPort,
           smtpSecure,
@@ -302,72 +316,142 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
           </label>
 
           <div style={{ marginTop: "16px", paddingTop: "16px", borderTop: "1px solid #e5e7eb" }}>
-            <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "10px" }}>Cấu hình SMTP gửi mail</h3>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
-              <label className="key-field">
-                SMTP Host
-                <input
-                  type="text"
-                  value={smtpHost}
-                  onChange={(e) => setSmtpHost(e.target.value)}
-                  placeholder="smtp.gmail.com"
-                />
-              </label>
-              <label className="key-field">
-                SMTP Port
-                <input
-                  type="number"
-                  value={smtpPort}
-                  onChange={(e) => setSmtpPort(Number(e.target.value))}
-                  placeholder="587"
-                />
-              </label>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "8px" }}>
-              <label className="key-field">
-                SMTP User / Email gửi
-                <input
-                  type="text"
-                  value={smtpUser}
-                  onChange={(e) => setSmtpUser(e.target.value)}
-                  placeholder="your-email@gmail.com"
-                />
-              </label>
-
-              <label className="key-field">
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
-                  <span>SMTP Password / App Password</span>
-                  {autoForwardConfig?.smtpPassConfigured ? (
-                    <span className="status-pill status-pill--ok" style={{ fontSize: "12px", padding: "2px 8px" }}>
-                      <Check size={13} style={{ marginRight: "4px" }} /> Đã lưu thành công
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: "12px", color: "#6b7280" }}>Chưa lưu mật khẩu</span>
-                  )}
-                </div>
-                <div className="input-with-action">
-                  <input
-                    type={visibleSmtpPass ? "text" : "password"}
-                    value={smtpPass}
-                    onChange={(e) => setSmtpPass(e.target.value)}
-                    placeholder={autoForwardConfig?.smtpPassConfigured ? "•••••••••••••••• (Đã lưu - nhập mới nếu đổi)" : "Nhập Mật khẩu ứng dụng 16 ký tự"}
-                  />
-                  <button type="button" onClick={() => setVisibleSmtpPass(!visibleSmtpPass)}>
-                    {visibleSmtpPass ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
-                </div>
-              </label>
-            </div>
-
-            <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", fontSize: "14px" }}>
-              <input
-                type="checkbox"
-                checked={smtpSecure}
-                onChange={(e) => setSmtpSecure(e.target.checked)}
-              />
-              Bật SSL/TLS Secure (Thường cho Port 465, Port 587 bỏ chọn)
+            <h3 style={{ fontSize: "15px", fontWeight: 600, marginBottom: "10px" }}>Dịch vụ gửi mail (Mail Service Provider)</h3>
+            
+            <label className="key-field">
+              Phương thức gửi email
+              <select
+                value={mailProvider}
+                onChange={(e) => setMailProvider(e.target.value as any)}
+                style={{
+                  width: "100%",
+                  padding: "10px",
+                  borderRadius: "6px",
+                  border: "1px solid var(--color-border, #ccc)",
+                  fontSize: "14px",
+                  backgroundColor: "white",
+                  fontWeight: 500
+                }}
+              >
+                <option value="resend">🚀 Resend HTTP API (Port 443 HTTPS - Miễn phí 3,000 mail/tháng - KHUYÊN DÙNG CHO RENDER)</option>
+                <option value="brevo">⚡ Brevo HTTP API (Port 443 HTTPS - Miễn phí 300 mail/ngày)</option>
+                <option value="smtp">📧 SMTP Server truyền thống (Port 587/465 - Có thể bị Render/VPS chặn)</option>
+              </select>
             </label>
+
+            {(mailProvider === "resend" || mailProvider === "brevo") && (
+              <div style={{ background: "#f8fafc", padding: "14px", borderRadius: "8px", border: "1px solid #e2e8f0", marginTop: "12px" }}>
+                <p style={{ margin: 0, fontSize: "13px", color: "#475569", marginBottom: "12px", lineHeight: "1.5" }}>
+                  💡 <strong>Ưu điểm HTTP API:</strong> Gửi qua giao thức HTTPS (Cổng 443) nên <strong>không bao giờ bị Render chặn cổng mail</strong>. Đăng ký lấy API Key miễn phí tại <strong>resend.com</strong> hoặc <strong>brevo.com</strong> chỉ mất 1 phút.
+                </p>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <label className="key-field">
+                    Sender Email / Email gửi
+                    <input
+                      type="text"
+                      value={fromEmail}
+                      onChange={(e) => setFromEmail(e.target.value)}
+                      placeholder={mailProvider === "resend" ? "onboarding@resend.dev" : "your-email@domain.com"}
+                    />
+                  </label>
+
+                  <label className="key-field">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span>API Key ({mailProvider === "resend" ? "dạng re_xxxx" : "Brevo Key"})</span>
+                      {autoForwardConfig?.apiSecretConfigured ? (
+                        <span className="status-pill status-pill--ok" style={{ fontSize: "12px", padding: "2px 8px" }}>
+                          <Check size={13} style={{ marginRight: "4px" }} /> Đã lưu API Key
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "12px", color: "#6b7280" }}>Chưa có Key</span>
+                      )}
+                    </div>
+                    <div className="input-with-action">
+                      <input
+                        type={visibleApiSecret ? "text" : "password"}
+                        value={apiSecret}
+                        onChange={(e) => setApiSecret(e.target.value)}
+                        placeholder={autoForwardConfig?.apiSecretConfigured ? "•••••••••••••••• (Đã lưu - nhập mới nếu đổi)" : "Dán API Key tại đây"}
+                      />
+                      <button type="button" onClick={() => setVisibleApiSecret(!visibleApiSecret)}>
+                        {visibleApiSecret ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            )}
+
+            {mailProvider === "smtp" && (
+              <div style={{ marginTop: "12px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
+                  <label className="key-field">
+                    SMTP Host
+                    <input
+                      type="text"
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                      placeholder="smtp.gmail.com"
+                    />
+                  </label>
+                  <label className="key-field">
+                    SMTP Port
+                    <input
+                      type="number"
+                      value={smtpPort}
+                      onChange={(e) => setSmtpPort(Number(e.target.value))}
+                      placeholder="587"
+                    />
+                  </label>
+                </div>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginTop: "8px" }}>
+                  <label className="key-field">
+                    SMTP User / Email gửi
+                    <input
+                      type="text"
+                      value={smtpUser}
+                      onChange={(e) => setSmtpUser(e.target.value)}
+                      placeholder="your-email@gmail.com"
+                    />
+                  </label>
+
+                  <label className="key-field">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                      <span>SMTP Password / App Password</span>
+                      {autoForwardConfig?.smtpPassConfigured ? (
+                        <span className="status-pill status-pill--ok" style={{ fontSize: "12px", padding: "2px 8px" }}>
+                          <Check size={13} style={{ marginRight: "4px" }} /> Đã lưu thành công
+                        </span>
+                      ) : (
+                        <span style={{ fontSize: "12px", color: "#6b7280" }}>Chưa lưu mật khẩu</span>
+                      )}
+                    </div>
+                    <div className="input-with-action">
+                      <input
+                        type={visibleSmtpPass ? "text" : "password"}
+                        value={smtpPass}
+                        onChange={(e) => setSmtpPass(e.target.value)}
+                        placeholder={autoForwardConfig?.smtpPassConfigured ? "•••••••••••••••• (Đã lưu - nhập mới nếu đổi)" : "Nhập Mật khẩu ứng dụng 16 ký tự"}
+                      />
+                      <button type="button" onClick={() => setVisibleSmtpPass(!visibleSmtpPass)}>
+                        {visibleSmtpPass ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </label>
+                </div>
+
+                <label style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "10px", fontSize: "14px" }}>
+                  <input
+                    type="checkbox"
+                    checked={smtpSecure}
+                    onChange={(e) => setSmtpSecure(e.target.checked)}
+                  />
+                  Bật SSL/TLS Secure (Thường cho Port 465, Port 587 bỏ chọn)
+                </label>
+              </div>
+            )}
           </div>
 
           <div className="button-row" style={{ marginTop: "20px" }}>
@@ -376,7 +460,7 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
             </button>
             <button className="button button--secondary" onClick={testSmtp} disabled={testingSmtp}>
               <Send size={16} style={{ marginRight: "6px" }} />
-              {testingSmtp ? "Đang gửi thử..." : "Gửi thử email SMTP"}
+              {testingSmtp ? "Đang gửi thử..." : "Gửi thử Email"}
             </button>
             <button className="button button--secondary" onClick={runBatchNow} disabled={runningBatch}>
               <Play size={16} style={{ marginRight: "6px" }} />
