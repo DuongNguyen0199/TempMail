@@ -30,6 +30,22 @@ export type InboxMessage = {
   updatedAt: string;
 };
 
+export type OsMail = {
+  id: string;
+  email: string;
+  mid: string;
+  sender?: string | null;
+  subject?: string | null;
+  snippet?: string | null;
+  body?: string | null;
+  receivedAt?: string | null;
+  status: "PENDING" | "FORWARDED" | "FAILED";
+  forwardedAt?: string | null;
+  errorMessage?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type Pagination = {
   page: number;
   limit: number;
@@ -51,4 +67,3 @@ export type AutoForwardConfig = {
   smtpPassConfigured: boolean;
   updatedAt: string;
 };
-

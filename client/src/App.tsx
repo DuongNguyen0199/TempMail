@@ -8,6 +8,7 @@ import {
   PanelLeftClose,
   Plus,
   Search,
+  Send,
   Settings,
   Terminal,
   X
@@ -17,11 +18,12 @@ import { AccountsView } from "./components/AccountsView";
 import { AuthScreen } from "./components/AuthScreen";
 import { ConsoleMonitorModal } from "./components/ConsoleMonitorModal";
 import { InboxView } from "./components/InboxView";
+import { OsMailView } from "./components/OsMailView";
 import { SettingsView } from "./components/SettingsView";
 import type { GmailAccount, InboxMessage, Pagination, User } from "./types";
 import { initials } from "./utils";
 
-type View = "inbox" | "accounts" | "settings";
+type View = "inbox" | "accounts" | "settings" | "os-mail";
 type Toast = { id: number; message: string; type: "success" | "error" };
 
 const emptyPagination: Pagination = { page: 1, limit: 25, total: 0, pages: 1 };
@@ -306,6 +308,9 @@ export default function App() {
           <button className={view === "inbox" ? "active" : ""} onClick={() => switchView("inbox")}>
             <Inbox size={19} /><span>Inbox</span><em>{selectedAccount?._count.messages ?? 0}</em>
           </button>
+          <button className={view === "os-mail" ? "active" : ""} onClick={() => switchView("os-mail")}>
+            <Send size={19} color="#6366f1" /><span>OutSystems Mail</span>
+          </button>
           <button className={view === "accounts" ? "active" : ""} onClick={() => switchView("accounts")}>
             <AtSign size={19} /><span>Gmail Accounts</span><em>{accounts.length}</em>
           </button>
@@ -500,6 +505,7 @@ export default function App() {
               globalSearchMode={globalSearchActive}
             />
           )}
+          {view === "os-mail" && <OsMailView accounts={accounts} notify={notify} />}
           {view === "accounts" && (
             <AccountsView
               accounts={accounts}

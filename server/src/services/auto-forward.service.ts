@@ -328,34 +328,20 @@ export async function runAutoForwardBatchForUser(userId: string) {
     }
   }
 
-  // 2. Query messages matching target subjects and isForwarded = false
-  const unforwardedMessages = await prisma.inboxMessage.findMany({
-    where: {
-      userId,
-      isForwarded: false
-    }
+  // 2. Query ALL messages matching target subjects (OutSystems)
+  const allMessages = await prisma.inboxMessage.findMany({
+    where: { userId }
   });
 
-  const matchingMessages = unforwardedMessages.filter((msg) => {
+  const matchingMessages = allMessages.filter((msg) => {
     if (!msg.subject) return false;
     const msgSubLower = msg.subject.toLowerCase();
     return subjects.some((sub) => msgSubLower.includes(sub.toLowerCase()));
   });
 
-  if (matchingMessages.length === 0) {
-    return {
-      count: 0,
-      status: "no_matching_messages",
-      detail: `Đã quét ${accounts.length} Gmail Account. Không có email mới nào khớp với các từ khóa tiêu đề.`
-    };
-  }
-
-  // 3. Send emails
-  let forwardedCount = 0;
-
+  // Save/Upsert into OsMail table for every matching message
   for (const msg of matchingMessages) {
     let fullMsg = msg;
-
     if (!fullMsg.body) {
       try {
         fullMsg = await syncMessage(userId, msg.email, msg.mid);
@@ -364,23 +350,72 @@ export async function runAutoForwardBatchForUser(userId: string) {
       }
     }
 
+    try {
+      await prisma.osMail.upsert({
+        where: { userId_email_mid: { userId, email: fullMsg.email, mid: fullMsg.mid } },
+        create: {
+          userId,
+          gmailAccountId: fullMsg.gmailAccountId,
+          email: fullMsg.email,
+          mid: fullMsg.mid,
+          sender: fullMsg.sender,
+          subject: fullMsg.subject,
+          snippet: fullMsg.snippet,
+          body: fullMsg.body || fullMsg.snippet,
+          receivedAt: fullMsg.receivedAt,
+          status: fullMsg.isForwarded ? "FORWARDED" : "PENDING",
+          forwardedAt: fullMsg.forwardedAt
+        },
+        update: {
+          sender: fullMsg.sender,
+          subject: fullMsg.subject,
+          snippet: fullMsg.snippet,
+          body: fullMsg.body || fullMsg.snippet,
+          receivedAt: fullMsg.receivedAt
+        }
+      });
+    } catch (err) {
+      console.error(`[OsMail] Upsert error for msg ${fullMsg.mid}:`, err);
+    }
+  }
+
+  // 3. Select OsMail items needing forward (status PENDING or FAILED)
+  const pendingOsMails = await prisma.osMail.findMany({
+    where: {
+      userId,
+      status: { in: ["PENDING", "FAILED"] }
+    }
+  });
+
+  if (pendingOsMails.length === 0) {
+    return {
+      count: 0,
+      status: "no_pending_messages",
+      detail: `Đã quét ${accounts.length} Gmail Account. Đã lưu ${matchingMessages.length} OutSystems Mail vào CSDL (Không có email mới cần gửi).`
+    };
+  }
+
+  // 4. Send emails and update status for each OsMail item
+  let forwardedCount = 0;
+
+  for (const osItem of pendingOsMails) {
     const emailOpts: EmailOptions = {
       to: config.targetEmail,
-      subject: `[Fwd] ${fullMsg.subject || "(No Subject)"}`,
-      text: `Original Sender: ${fullMsg.sender || "Unknown"}\nOriginal Recipient: ${fullMsg.email}\nReceived At: ${fullMsg.receivedAt ? new Date(fullMsg.receivedAt).toLocaleString("vi-VN") : "N/A"}\n\nSnippet:\n${fullMsg.snippet || ""}\n\n---\nBody:\n${fullMsg.body || fullMsg.snippet || "(No content)"}`,
+      subject: `[Fwd] ${osItem.subject || "(No Subject)"}`,
+      text: `Original Sender: ${osItem.sender || "Unknown"}\nOriginal Recipient: ${osItem.email}\nReceived At: ${osItem.receivedAt ? new Date(osItem.receivedAt).toLocaleString("vi-VN") : "N/A"}\n\nSnippet:\n${osItem.snippet || ""}\n\n---\nBody:\n${osItem.body || osItem.snippet || "(No content)"}`,
       html: `
         <div style="font-family: Arial, sans-serif; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; max-width: 800px; margin: 0 auto;">
           <div style="background-color: #4f46e5; color: white; padding: 16px;">
-            <h3 style="margin: 0;">Forwarded Mail from SmailBox</h3>
+            <h3 style="margin: 0;">OutSystems Mail - Forwarded from SmailBox</h3>
           </div>
           <div style="background-color: #f9fafb; padding: 16px; border-bottom: 1px solid #e5e7eb; font-size: 14px; color: #374151;">
-            <p style="margin: 4px 0;"><strong>From:</strong> ${fullMsg.sender || "Unknown"}</p>
-            <p style="margin: 4px 0;"><strong>To:</strong> ${fullMsg.email}</p>
-            <p style="margin: 4px 0;"><strong>Received:</strong> ${fullMsg.receivedAt ? new Date(fullMsg.receivedAt).toLocaleString("vi-VN") : "N/A"}</p>
-            <p style="margin: 4px 0;"><strong>Subject:</strong> ${fullMsg.subject || "(No Subject)"}</p>
+            <p style="margin: 4px 0;"><strong>From:</strong> ${osItem.sender || "Unknown"}</p>
+            <p style="margin: 4px 0;"><strong>To:</strong> ${osItem.email}</p>
+            <p style="margin: 4px 0;"><strong>Received:</strong> ${osItem.receivedAt ? new Date(osItem.receivedAt).toLocaleString("vi-VN") : "N/A"}</p>
+            <p style="margin: 4px 0;"><strong>Subject:</strong> ${osItem.subject || "(No Subject)"}</p>
           </div>
           <div style="padding: 20px;">
-            ${fullMsg.body || `<p style="color: #6b7280; font-style: italic;">${fullMsg.snippet || "No body content"}</p>`}
+            ${osItem.body || `<p style="color: #6b7280; font-style: italic;">${osItem.snippet || "No body content"}</p>`}
           </div>
         </div>
       `
@@ -388,31 +423,55 @@ export async function runAutoForwardBatchForUser(userId: string) {
 
     try {
       await sendEmailMessage(userId, emailOpts);
-      await prisma.inboxMessage.update({
-        where: { id: fullMsg.id },
+      const now = new Date();
+
+      // Update OsMail status to FORWARDED
+      await prisma.osMail.update({
+        where: { id: osItem.id },
         data: {
-          isForwarded: true,
-          forwardedAt: new Date()
+          status: "FORWARDED",
+          forwardedAt: now,
+          errorMessage: null
         }
       });
+
+      // Update InboxMessage isForwarded
+      await prisma.inboxMessage.updateMany({
+        where: { userId, email: osItem.email, mid: osItem.mid },
+        data: {
+          isForwarded: true,
+          forwardedAt: now
+        }
+      });
+
       forwardedCount++;
 
       await logFetch({
         userId,
         action: "auto_forward_email",
         endpoint: "/auto-forward/batch",
-        requestParams: { targetEmail: config.targetEmail, mid: fullMsg.mid, subject: fullMsg.subject },
+        requestParams: { targetEmail: config.targetEmail, mid: osItem.mid, subject: osItem.subject },
         status: "success"
       });
-    } catch (err) {
-      console.error(`[AutoForward] Error sending email for msg ${fullMsg.mid}:`, err);
+    } catch (err: any) {
+      const errorMsg = err instanceof Error ? err.message : "Send Error";
+      console.error(`[AutoForward] Error sending email for OsMail ${osItem.mid}:`, err);
+
+      await prisma.osMail.update({
+        where: { id: osItem.id },
+        data: {
+          status: "FAILED",
+          errorMessage: errorMsg
+        }
+      });
+
       await logFetch({
         userId,
         action: "auto_forward_email",
         endpoint: "/auto-forward/batch",
-        requestParams: { targetEmail: config.targetEmail, mid: fullMsg.mid },
+        requestParams: { targetEmail: config.targetEmail, mid: osItem.mid },
         status: "error",
-        errorMessage: err instanceof Error ? err.message : "Send Error"
+        errorMessage: errorMsg
       });
     }
   }
@@ -420,7 +479,7 @@ export async function runAutoForwardBatchForUser(userId: string) {
   return {
     count: forwardedCount,
     status: "completed",
-    detail: `Đã quét ${accounts.length} Gmail Account. Đã tìm thấy ${matchingMessages.length} email khớp tiêu đề và chuyển tiếp thành công ${forwardedCount} email tới ${config.targetEmail}.`
+    detail: `Đã quét ${accounts.length} Gmail Account. Đã tìm thấy ${matchingMessages.length} OutSystems Mail và chuyển tiếp thành công ${forwardedCount} email tới ${config.targetEmail}.`
   };
 }
 
@@ -440,4 +499,68 @@ export async function runAutoForwardBatchAllUsers() {
   }
 
   return { totalForwarded };
+}
+
+export async function listOsMails(
+  userId: string,
+  filters: { email?: string; status?: string; search?: string; page?: number; limit?: number }
+) {
+  const where: any = { userId };
+  if (filters.email) {
+    where.email = filters.email.toLowerCase();
+  }
+  if (filters.status && filters.status !== "ALL") {
+    where.status = filters.status;
+  }
+  if (filters.search) {
+    where.OR = [
+      { sender: { contains: filters.search } },
+      { subject: { contains: filters.search } },
+      { snippet: { contains: filters.search } },
+      { email: { contains: filters.search } }
+    ];
+  }
+
+  const page = filters.page || 1;
+  const limit = filters.limit || 25;
+
+  const [data, total, statsForwarded, statsPending, statsFailed, allStatsTotal] = await Promise.all([
+    prisma.osMail.findMany({
+      where,
+      orderBy: [{ receivedAt: "desc" }, { createdAt: "desc" }],
+      skip: (page - 1) * limit,
+      take: limit
+    }),
+    prisma.osMail.count({ where }),
+    prisma.osMail.count({ where: { userId, status: "FORWARDED" } }),
+    prisma.osMail.count({ where: { userId, status: "PENDING" } }),
+    prisma.osMail.count({ where: { userId, status: "FAILED" } }),
+    prisma.osMail.count({ where: { userId } })
+  ]);
+
+  return {
+    data,
+    pagination: {
+      page,
+      limit,
+      total,
+      pages: Math.max(1, Math.ceil(total / limit))
+    },
+    stats: {
+      total: allStatsTotal,
+      forwarded: statsForwarded,
+      pending: statsPending,
+      failed: statsFailed
+    }
+  };
+}
+
+export async function getOsMailById(userId: string, id: string) {
+  const osMail = await prisma.osMail.findFirst({
+    where: { userId, id }
+  });
+  if (!osMail) {
+    throw new ApiError(404, "Không tìm thấy OutSystems Mail này.", "OS_MAIL_NOT_FOUND");
+  }
+  return osMail;
 }

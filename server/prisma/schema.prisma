@@ -22,6 +22,7 @@ model User {
   inboxMessages     InboxMessage[]
   fetchLogs         FetchLog[]
   autoForwardConfig AutoForwardConfig?
+  osMails           OsMail[]
 
   @@map("users")
 }
@@ -121,5 +122,30 @@ model FetchLog {
 
   @@index([userId, createdAt])
   @@map("fetch_logs")
+}
+
+model OsMail {
+  id             String   @id @default(cuid())
+  userId         String
+  gmailAccountId String?
+  email          String
+  mid            String
+  sender         String?
+  subject        String?
+  snippet        String?
+  body           String?
+  receivedAt     DateTime?
+  status         String   @default("PENDING")
+  forwardedAt    DateTime?
+  errorMessage   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, email, mid])
+  @@index([userId])
+  @@index([userId, email])
+  @@index([status])
+  @@map("os_mails")
 }
 

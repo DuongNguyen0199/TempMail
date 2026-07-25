@@ -1,10 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
 import { asyncHandler } from "../lib/async-handler.js";
+import { serializeBigInts } from "../lib/json.js";
 import { requireAuth } from "../middleware/auth.js";
 import { fetchLimiter } from "../middleware/rate-limit.js";
 import {
   getOrCreateAutoForwardConfig,
+  getOsMailById,
+  listOsMails,
   runAutoForwardBatchForUser,
   saveAutoForwardConfig,
   sendTestEmail
@@ -47,4 +50,22 @@ autoForwardRouter.post("/auto-forward/test-smtp", fetchLimiter, asyncHandler(asy
 autoForwardRouter.post("/auto-forward/run-now", fetchLimiter, asyncHandler(async (req, res) => {
   const result = await runAutoForwardBatchForUser(req.user!.id);
   res.json(result);
+}));
+
+autoForwardRouter.get("/os-mails", asyncHandler(async (req, res) => {
+  const query = z.object({
+    email: z.string().optional(),
+    status: z.string().optional(),
+    search: z.string().optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(25)
+  }).parse(req.query);
+
+  const result = await listOsMails(req.user!.id, query);
+  res.json(serializeBigInts(result));
+}));
+
+autoForwardRouter.get("/os-mails/:id", asyncHandler(async (req, res) => {
+  const result = await getOsMailById(req.user!.id, String(req.params.id));
+  res.json(serializeBigInts(result));
 }));
