@@ -13,6 +13,7 @@ import {
   sendTestEmail,
   syncAllOsMailsAllUsers
 } from "../services/auto-forward.service.js";
+import { getSchedulerStatus } from "../services/scheduler.js";
 
 export const autoForwardRouter = Router();
 autoForwardRouter.use(requireAuth);
@@ -40,6 +41,11 @@ autoForwardRouter.put("/auto-forward", asyncHandler(async (req, res) => {
   const input = autoForwardSchema.parse(req.body);
   const updated = await saveAutoForwardConfig(req.user!.id, input);
   res.json(updated);
+}));
+
+autoForwardRouter.get("/auto-forward/scheduler-status", asyncHandler(async (_req, res) => {
+  const status = getSchedulerStatus();
+  res.json(status);
 }));
 
 autoForwardRouter.post("/auto-forward/test-smtp", fetchLimiter, asyncHandler(async (req, res) => {

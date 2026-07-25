@@ -273,8 +273,8 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
         <div className="settings-card__body">
           <div className="settings-title-row">
             <div>
-              <h2>Tự động gửi email theo Subject (Batch 30 phút)</h2>
-              <p>Tự động quét inbox mỗi 30 phút và gửi email khớp tiêu đề sang hòm thư chỉ định.</p>
+              <h2>Tự động gửi email theo Subject (Lịch chạy linh hoạt)</h2>
+              <p>Tự động quét inbox và chuyển tiếp email khớp tiêu đề sang hòm thư chỉ định.</p>
             </div>
             <label style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", fontWeight: 600 }}>
               <input
@@ -285,6 +285,14 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
               />
               {enabled ? "Đang BẬT" : "Đang TẮT"}
             </label>
+          </div>
+
+          <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", padding: "12px 16px", borderRadius: "8px", fontSize: "13px", color: "#334155", marginBottom: "16px", lineHeight: "1.6" }}>
+            📅 <strong>Lịch chạy Batch tự động thông minh (Smart Dynamic Schedule):</strong>
+            <div style={{ display: "flex", gap: "16px", flexWrap: "wrap", marginTop: "6px" }}>
+              <span>🗓️ <strong>Thứ 2 $\rightarrow$ Thứ 5, Thứ 7, CN:</strong> 1 ngày / 1 lần</span>
+              <span style={{ color: "#4f46e5", fontWeight: 700 }}>⚡ <strong>Riêng Thứ 6:</strong> 30 phút / 1 lần</span>
+            </div>
           </div>
 
           <label className="key-field">
