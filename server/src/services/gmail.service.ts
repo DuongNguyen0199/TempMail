@@ -573,3 +573,47 @@ export async function syncMessage(userId: string, email: string, mid: string) {
     throw error;
   }
 }
+
+export async function reApplySettingsToAccounts(userId: string) {
+  const forwardConfig = await getOrCreateAutoForwardConfig(userId);
+
+  if (!forwardConfig.enabled) {
+    throw new ApiError(
+      400,
+      "Vui lòng BẬT tính năng tự động gửi email trong mục Cài đặt trước khi áp dụng lại.",
+      "FORWARD_CONFIG_DISABLED"
+    );
+  }
+
+  const accounts = await listAccounts(userId);
+  if (accounts.length === 0) {
+    return {
+      success: true,
+      count: 0,
+      detail: "Chưa có tài khoản Gmail nào trong workspace của bạn."
+    };
+  }
+
+  console.log(`[ReApply] Re-applying settings & re-syncing ${accounts.length} Gmail accounts for user ${userId}...`);
+
+  let syncedCount = 0;
+  for (const account of accounts) {
+    try {
+      await syncInbox(userId, account.email);
+      syncedCount++;
+    } catch (err) {
+      console.error(`[ReApply] Error syncing ${account.email}:`, err);
+    }
+  }
+
+  // Run auto forward batch
+  const batchRes = await runAutoForwardBatchForUser(userId);
+
+  return {
+    success: true,
+    count: accounts.length,
+    syncedCount,
+    forwardedCount: batchRes.count,
+    detail: `Đã áp dụng lại Cài đặt mới cho ${syncedCount}/${accounts.length} Gmail Accounts và quét lọc/chuyển tiếp email thành công!`
+  };
+}

@@ -10,6 +10,7 @@ import {
   deleteManualAccount,
   getMessage,
   listAccounts,
+  reApplySettingsToAccounts,
   searchAllInboxes,
   searchAllInboxesFromApi,
   searchInbox,
@@ -60,6 +61,11 @@ gmailRouter.post("/accounts/bulk", asyncHandler(async (req, res) => {
 
   const result = await addBulkAccounts(req.user!.id, { emails: rawList });
   res.status(201).json(result);
+}));
+
+gmailRouter.post("/accounts/re-apply", fetchLimiter, asyncHandler(async (req, res) => {
+  const result = await reApplySettingsToAccounts(req.user!.id);
+  res.json(result);
 }));
 
 gmailRouter.delete("/accounts/:email", asyncHandler(async (req, res) => {

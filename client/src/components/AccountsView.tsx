@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
-import { AtSign, ListPlus, Plus, Trash2 } from "lucide-react";
+import { AtSign, ListPlus, Plus, RotateCw, Trash2 } from "lucide-react";
+import { api } from "../api";
 import type { GmailAccount } from "../types";
 
 export function AccountsView({
@@ -9,7 +10,8 @@ export function AccountsView({
   onAdd,
   onAddBulk,
   onDelete,
-  onOpen
+  onOpen,
+  notify
 }: {
   accounts: GmailAccount[];
   adding: boolean;
@@ -18,10 +20,12 @@ export function AccountsView({
   onAddBulk: (emailsText: string) => Promise<void>;
   onDelete: (account: GmailAccount) => Promise<void>;
   onOpen: (account: GmailAccount) => void;
+  notify: (msg: string, type?: "success" | "error") => void;
 }) {
   const [mode, setMode] = useState<"single" | "bulk">("single");
   const [email, setEmail] = useState("");
   const [bulkText, setBulkText] = useState("");
+  const [reApplying, setReApplying] = useState(false);
 
   const submitSingle = async (event: FormEvent) => {
     event.preventDefault();
@@ -37,6 +41,20 @@ export function AccountsView({
     if (!value) return;
     await onAddBulk(value);
     setBulkText("");
+  };
+
+  const handleReApply = async () => {
+    setReApplying(true);
+    try {
+      const res = await api<{ success: boolean; detail?: string }>("/gmail/accounts/re-apply", {
+        method: "POST"
+      });
+      notify(res.detail || "Đã áp dụng lại Cài Đặt mới cho toàn bộ Gmail thành công!");
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Khóa cài đặt chưa sẵn sàng hoặc đã có lỗi.", "error");
+    } finally {
+      setReApplying(false);
+    }
   };
 
   return (
@@ -61,20 +79,33 @@ export function AccountsView({
         </ul>
       </div>
 
-      <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
+      <div style={{ display: "flex", gap: "10px", marginBottom: "16px", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
+          <button
+            type="button"
+            className={`button ${mode === "single" ? "button--primary" : "button--secondary"}`}
+            onClick={() => setMode("single")}
+          >
+            <Plus size={16} style={{ marginRight: "6px" }} /> Thêm 1 Gmail
+          </button>
+          <button
+            type="button"
+            className={`button ${mode === "bulk" ? "button--primary" : "button--secondary"}`}
+            onClick={() => setMode("bulk")}
+          >
+            <ListPlus size={16} style={{ marginRight: "6px" }} /> Thêm hàng loạt Gmail (Bulk Insert)
+          </button>
+        </div>
+
         <button
           type="button"
-          className={`button ${mode === "single" ? "button--primary" : "button--secondary"}`}
-          onClick={() => setMode("single")}
+          className="button button--secondary"
+          onClick={handleReApply}
+          disabled={reApplying || adding}
+          style={{ display: "flex", alignItems: "center", gap: "6px", background: "#f8fafc", color: "#4f46e5", border: "1.5px solid #818cf8", fontWeight: 600, padding: "8px 16px" }}
         >
-          <Plus size={16} style={{ marginRight: "6px" }} /> Thêm 1 Gmail
-        </button>
-        <button
-          type="button"
-          className={`button ${mode === "bulk" ? "button--primary" : "button--secondary"}`}
-          onClick={() => setMode("bulk")}
-        >
-          <ListPlus size={16} style={{ marginRight: "6px" }} /> Thêm hàng loạt Gmail (Bulk Insert)
+          <RotateCw size={16} className={reApplying ? "spin" : ""} />
+          <span>{reApplying ? "Đang áp dụng lại..." : "🔄 Áp dụng lại Cài Đặt (Re-Apply)"}</span>
         </button>
       </div>
 

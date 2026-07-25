@@ -515,6 +515,7 @@ export default function App() {
               onAddBulk={addBulkAccounts}
               onDelete={deleteAccount}
               onOpen={(account) => { setSelectedAccount(account); switchView("inbox"); }}
+              notify={notify}
             />
           )}
           {view === "settings" && <SettingsView notify={notify} />}
