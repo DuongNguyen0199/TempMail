@@ -285,7 +285,7 @@ export async function runAutoForwardBatchForUser(userId: string) {
         userId,
         action: "auto_forward_email",
         endpoint: "/auto-forward/batch",
-        requestParams: JSON.stringify({ targetEmail: config.targetEmail, mid: fullMsg.mid, subject: fullMsg.subject }),
+        requestParams: { targetEmail: config.targetEmail, mid: fullMsg.mid, subject: fullMsg.subject },
         status: "success"
       });
     } catch (err) {
@@ -294,7 +294,7 @@ export async function runAutoForwardBatchForUser(userId: string) {
         userId,
         action: "auto_forward_email",
         endpoint: "/auto-forward/batch",
-        requestParams: JSON.stringify({ targetEmail: config.targetEmail, mid: fullMsg.mid }),
+        requestParams: { targetEmail: config.targetEmail, mid: fullMsg.mid },
         status: "error",
         errorMessage: err instanceof Error ? err.message : "SMTP Send Error"
       });
