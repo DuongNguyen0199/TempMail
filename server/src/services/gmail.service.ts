@@ -467,32 +467,41 @@ export async function syncInbox(userId: string, email: string, timestamp?: numbe
     const messages = (response.messages ?? [])
       .map((raw) => ({ raw, normalized: normalizeMessage(raw) }))
       .filter((item) => item.normalized !== null);
-    await prisma.$transaction([
-      ...messages.map(({ raw, normalized }) =>
-        prisma.inboxMessage.upsert({
-          where: { userId_email_mid: { userId, email: account.email, mid: normalized!.mid } },
-          create: {
-            userId,
-            gmailAccountId: account.id,
-            email: account.email,
-            ...normalized!,
-            rawInboxJson: toJsonValue(raw)
-          },
-          update: {
-            sender: normalized!.sender,
-            subject: normalized!.subject,
-            snippet: normalized!.snippet,
-            receivedAt: normalized!.receivedAt,
-            receivedTs: normalized!.receivedTs,
-            rawInboxJson: toJsonValue(raw)
-          }
+
+    if (messages.length > 0) {
+      await prisma.$transaction([
+        ...messages.map(({ raw, normalized }) =>
+          prisma.inboxMessage.upsert({
+            where: { userId_email_mid: { userId, email: account.email, mid: normalized!.mid } },
+            create: {
+              userId,
+              gmailAccountId: account.id,
+              email: account.email,
+              ...normalized!,
+              rawInboxJson: toJsonValue(raw)
+            },
+            update: {
+              sender: normalized!.sender,
+              subject: normalized!.subject,
+              snippet: normalized!.snippet,
+              receivedAt: normalized!.receivedAt,
+              receivedTs: normalized!.receivedTs,
+              rawInboxJson: toJsonValue(raw)
+            }
+          })
+        ),
+        prisma.gmailAccount.update({
+          where: { id: account.id },
+          data: { lastSyncedAt: new Date() }
         })
-      ),
-      prisma.gmailAccount.update({
+      ]);
+    } else {
+      await prisma.gmailAccount.update({
         where: { id: account.id },
         data: { lastSyncedAt: new Date() }
-      })
-    ]);
+      });
+    }
+
     await logFetch({
       userId,
       action: "fetch_inbox",
@@ -501,16 +510,20 @@ export async function syncInbox(userId: string, email: string, timestamp?: numbe
       status: "success"
     });
     return { synced: messages.length };
-  } catch (error) {
+  } catch (error: any) {
+    const errorMsg = error instanceof Error ? error.message : "Unknown error";
+    console.warn(`[SyncInbox Warning] Email ${account.email} không thể fetch qua Sonjj API (${errorMsg}). Nếu đây là Gmail cá nhân ngoài Sonjj, hệ thống Sonjj API sẽ không có dữ liệu hòm thư này.`);
+    
     await logFetch({
       userId,
       action: "fetch_inbox",
       endpoint: "/v1/temp_gmail/inbox",
       requestParams: { email: account.email, timestamp: since },
       status: "error",
-      errorMessage: error instanceof Error ? error.message : "Unknown error"
+      errorMessage: `Gmail ngoài Sonjj API: ${errorMsg}`
     });
-    throw error;
+
+    return { synced: 0, warning: errorMsg };
   }
 }
 

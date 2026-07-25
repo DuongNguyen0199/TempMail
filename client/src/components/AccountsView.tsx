@@ -49,6 +49,18 @@ export function AccountsView({
         </div>
       </div>
 
+      <div style={{ background: "#eff6ff", border: "1px solid #bfdbfe", padding: "14px 16px", borderRadius: "10px", color: "#1e40af", fontSize: "13px", lineHeight: "1.6", marginBottom: "20px" }}>
+        💡 <strong>Lưu ý về Nguồn dữ liệu Sonjj / SmailPro API:</strong>
+        <ul style={{ margin: "6px 0 0 18px", padding: 0 }}>
+          <li>
+            API của <strong>Sonjj / SmailPro</strong> chỉ hỗ trợ đọc thư tự động cho <strong>các tài khoản Gmail ảo/tạm thời</strong> được mua hoặc khởi tạo qua hệ thống Sonjj (ví dụ: <code>louellagonzale.z1201.5@gmail.com</code>).
+          </li>
+          <li>
+            Nếu bạn thêm một <strong>Gmail cá nhân bên ngoài</strong> (như <code>duongrbt1@gmail.com</code> hoặc <code>duongrbt@gmail.com</code>), máy chủ Sonjj API sẽ không sở hữu hòm thư cá nhân này nên không thể đọc dữ liệu từ Google về được.
+          </li>
+        </ul>
+      </div>
+
       <div style={{ display: "flex", gap: "10px", marginBottom: "16px" }}>
         <button
           type="button"
