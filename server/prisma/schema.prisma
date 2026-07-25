@@ -149,3 +149,15 @@ model OsMail {
   @@map("os_mails")
 }
 
+model PendingRegistration {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  username     String?
+  passwordHash String
+  otpCode      String
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+
+  @@map("pending_registrations")
+}
+
