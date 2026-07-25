@@ -36,7 +36,8 @@ autoForwardRouter.put("/auto-forward", asyncHandler(async (req, res) => {
 }));
 
 autoForwardRouter.post("/auto-forward/test-smtp", fetchLimiter, asyncHandler(async (req, res) => {
-  const result = await sendTestEmail(req.user!.id);
+  const input = autoForwardSchema.partial().parse(req.body || {});
+  const result = await sendTestEmail(req.user!.id, input);
   res.json(result);
 }));
 

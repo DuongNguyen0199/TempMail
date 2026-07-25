@@ -202,7 +202,17 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
   const testSmtp = async () => {
     setTestingSmtp(true);
     try {
-      const res = await api<{ message: string }>("/profile/auto-forward/test-smtp", { method: "POST" });
+      const res = await api<{ message: string }>("/profile/auto-forward/test-smtp", {
+        method: "POST",
+        body: JSON.stringify({
+          targetEmail,
+          smtpHost,
+          smtpPort,
+          smtpSecure,
+          smtpUser,
+          ...(smtpPass ? { smtpPass } : {})
+        })
+      });
       notify(res.message);
     } catch (error) {
       notify(error instanceof Error ? error.message : "Không thể gửi email kiểm tra.", "error");
@@ -214,11 +224,13 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
   const runBatchNow = async () => {
     setRunningBatch(true);
     try {
-      const res = await api<{ count: number; status: string }>("/profile/auto-forward/run-now", {
+      const res = await api<{ count: number; status: string; detail?: string }>("/profile/auto-forward/run-now", {
         method: "POST"
       });
       if (res.status === "disabled") {
         notify("Tính năng gửi email tự động đang TẮT.", "error");
+      } else if (res.detail) {
+        notify(res.detail, res.count > 0 ? "success" : "error");
       } else if (res.count > 0) {
         notify(`Hoàn tất batch! Đã gửi thành công ${res.count} email khớp từ khóa.`);
       } else {

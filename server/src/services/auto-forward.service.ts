@@ -97,63 +97,88 @@ export async function saveAutoForwardConfig(userId: string, input: SaveAutoForwa
   return getOrCreateAutoForwardConfig(userId);
 }
 
-export async function getTransporterForUser(userId: string) {
+export async function getTransporterForUser(userId: string, overrideParams?: SaveAutoForwardInput) {
   const config = await prisma.autoForwardConfig.findUnique({
     where: { userId }
   });
-  if (!config) {
-    throw new ApiError(400, "Chưa cấu hình tự động gửi email.", "CONFIG_REQUIRED");
-  }
+
+  const host = overrideParams?.smtpHost?.trim() || config?.smtpHost || "smtp.gmail.com";
+  const port = overrideParams?.smtpPort || config?.smtpPort || 587;
+  const secure = port === 465 ? true : (overrideParams?.smtpSecure ?? config?.smtpSecure ?? false);
+  const user = overrideParams?.smtpUser?.trim() || config?.smtpUser || "";
 
   let pass: string | undefined = undefined;
-  if (config.smtpPassEncrypted) {
+  if (overrideParams?.smtpPass && overrideParams.smtpPass.trim()) {
+    pass = overrideParams.smtpPass.trim();
+  } else if (config?.smtpPassEncrypted) {
     pass = decryptSecret(config.smtpPassEncrypted);
   }
-
-  const host = config.smtpHost || "smtp.gmail.com";
-  const port = config.smtpPort || 587;
-  const secure = config.smtpSecure || false;
-  const user = config.smtpUser || "";
 
   if (!user || !pass) {
     throw new ApiError(
       400,
-      "Vui lòng cấu hình đầy đủ SMTP User và SMTP Password/App Password để gửi email.",
+      "Vui lòng nhập đầy đủ SMTP User và Mật khẩu ứng dụng (App Password) để kết nối.",
       "SMTP_CREDENTIALS_REQUIRED"
     );
   }
 
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure,
-    auth: { user, pass }
-  });
+  console.log(`[AutoForward] Creating SMTP transporter for ${user} via ${host}:${port} (secure: ${secure})...`);
+
+  return {
+    config: {
+      host,
+      port,
+      secure,
+      user,
+      targetEmail: overrideParams?.targetEmail?.trim() || config?.targetEmail || DEFAULT_TARGET_EMAIL
+    },
+    transporter: nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: { user, pass },
+      connectionTimeout: 10000, // 10s connection timeout
+      greetingTimeout: 10000,
+      socketTimeout: 15000
+    })
+  };
 }
 
-export async function sendTestEmail(userId: string) {
-  const config = await getOrCreateAutoForwardConfig(userId);
-  const transporter = await getTransporterForUser(userId);
+export async function sendTestEmail(userId: string, overrideParams?: SaveAutoForwardInput) {
+  const { config: smtpConfig, transporter } = await getTransporterForUser(userId, overrideParams);
 
   const mailOptions = {
-    from: `SmailBox AutoForward <${config.smtpUser}>`,
-    to: config.targetEmail,
+    from: `SmailBox AutoForward <${smtpConfig.user}>`,
+    to: smtpConfig.targetEmail,
     subject: "[SmailBox] Kiểm tra kết nối gửi Email tự động",
-    text: `Chào bạn,\n\nĐây là email kiểm tra kết nối từ hệ thống SmailBox Inbox Manager.\nTính năng gửi email tự động của bạn đã được cấu hình thành công.\nEmail nhận mặc định: ${config.targetEmail}\nThời gian: ${new Date().toLocaleString("vi-VN")}`,
+    text: `Chào bạn,\n\nĐây là email kiểm tra kết nối từ hệ thống SmailBox Inbox Manager.\nTính năng gửi email tự động của bạn đã được cấu hình thành công.\nEmail nhận: ${smtpConfig.targetEmail}\nThời gian: ${new Date().toLocaleString("vi-VN")}`,
     html: `<div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #4f46e5; border-radius: 8px;">
       <h2 style="color: #4f46e5;">SmailBox Auto Forward Test</h2>
       <p>Chào bạn,</p>
       <p>Đây là email kiểm tra kết nối từ hệ thống <strong>SmailBox Inbox Manager</strong>.</p>
       <p>Tính năng gửi email tự động của bạn đã được cấu hình thành công.</p>
       <ul>
-        <li><strong>Email nhận:</strong> ${config.targetEmail}</li>
+        <li><strong>Email nhận:</strong> ${smtpConfig.targetEmail}</li>
         <li><strong>Thời gian:</strong> ${new Date().toLocaleString("vi-VN")}</li>
       </ul>
     </div>`
   };
 
-  await transporter.sendMail(mailOptions);
-  return { success: true, message: `Email kiểm tra đã được gửi tới ${config.targetEmail}` };
+  try {
+    console.log(`[AutoForward] Sending test email to ${smtpConfig.targetEmail}...`);
+    await transporter.sendMail(mailOptions);
+    console.log(`[AutoForward] Test email sent successfully to ${smtpConfig.targetEmail}`);
+    return { success: true, message: `Email kiểm tra đã được gửi thành công tới ${smtpConfig.targetEmail}` };
+  } catch (error: any) {
+    console.error("[AutoForward] SMTP Test Failed:", error);
+    let errorMsg = error?.message || "Không thể kết nối đến máy chủ SMTP";
+    if (errorMsg.includes("ETIMEDOUT") || errorMsg.includes("timeout")) {
+      errorMsg = `Kết nối SMTP tới ${smtpConfig.host}:${smtpConfig.port} bị quá thời gian (Timeout). Hãy thử đổi Port 465 (Bật SSL/TLS).`;
+    } else if (errorMsg.includes("535") || errorMsg.includes("Username and Password not accepted")) {
+      errorMsg = "Mật khẩu SMTP không đúng. Vui lòng đảm bảo dùng Mật khẩu ứng dụng (App Password 16 ký tự) của Gmail.";
+    }
+    throw new ApiError(400, `Lỗi gửi SMTP: ${errorMsg}`, "SMTP_ERROR");
+  }
 }
 
 export async function runAutoForwardBatchForUser(userId: string) {
@@ -162,7 +187,7 @@ export async function runAutoForwardBatchForUser(userId: string) {
   });
 
   if (!config || !config.enabled || !config.targetEmail) {
-    return { count: 0, status: "disabled" };
+    return { count: 0, status: "disabled", detail: "Tính năng gửi email tự động đang bị tắt." };
   }
 
   let subjects: string[] = DEFAULT_OUTSYSTEMS_SUBJECTS;
@@ -174,9 +199,11 @@ export async function runAutoForwardBatchForUser(userId: string) {
 
   // 1. Sync inbox for all user accounts
   const accounts = await listAccounts(userId);
+  let syncedAccountsCount = 0;
   for (const account of accounts) {
     try {
       await syncInbox(userId, account.email);
+      syncedAccountsCount++;
     } catch (err) {
       console.error(`[AutoForward] Failed sync inbox for account ${account.email}:`, err);
     }
@@ -197,11 +224,15 @@ export async function runAutoForwardBatchForUser(userId: string) {
   });
 
   if (matchingMessages.length === 0) {
-    return { count: 0, status: "no_matching_messages" };
+    return {
+      count: 0,
+      status: "no_matching_messages",
+      detail: `Đã quét ${accounts.length} Gmail Account. Không có email mới nào khớp với các từ khóa tiêu đề.`
+    };
   }
 
   // 3. Send emails
-  const transporter = await getTransporterForUser(userId);
+  const { config: smtpConfig, transporter } = await getTransporterForUser(userId);
   let forwardedCount = 0;
 
   for (const msg of matchingMessages) {
@@ -217,7 +248,7 @@ export async function runAutoForwardBatchForUser(userId: string) {
     }
 
     const mailOptions = {
-      from: `SmailBox AutoForward <${config.smtpUser}>`,
+      from: `SmailBox AutoForward <${smtpConfig.user}>`,
       to: config.targetEmail,
       subject: `[Fwd] ${fullMsg.subject || "(No Subject)"}`,
       text: `Original Sender: ${fullMsg.sender || "Unknown"}\nOriginal Recipient: ${fullMsg.email}\nReceived At: ${fullMsg.receivedAt ? new Date(fullMsg.receivedAt).toLocaleString("vi-VN") : "N/A"}\n\nSnippet:\n${fullMsg.snippet || ""}\n\n---\nBody:\n${fullMsg.body || fullMsg.snippet || "(No content)"}`,
@@ -254,7 +285,7 @@ export async function runAutoForwardBatchForUser(userId: string) {
         userId,
         action: "auto_forward_email",
         endpoint: "/auto-forward/batch",
-        requestParams: { targetEmail: config.targetEmail, mid: fullMsg.mid, subject: fullMsg.subject },
+        requestParams: JSON.stringify({ targetEmail: config.targetEmail, mid: fullMsg.mid, subject: fullMsg.subject }),
         status: "success"
       });
     } catch (err) {
@@ -263,14 +294,18 @@ export async function runAutoForwardBatchForUser(userId: string) {
         userId,
         action: "auto_forward_email",
         endpoint: "/auto-forward/batch",
-        requestParams: { targetEmail: config.targetEmail, mid: fullMsg.mid },
+        requestParams: JSON.stringify({ targetEmail: config.targetEmail, mid: fullMsg.mid }),
         status: "error",
         errorMessage: err instanceof Error ? err.message : "SMTP Send Error"
       });
     }
   }
 
-  return { count: forwardedCount, status: "completed" };
+  return {
+    count: forwardedCount,
+    status: "completed",
+    detail: `Đã quét ${accounts.length} Gmail Account. Đã tìm thấy ${matchingMessages.length} email khớp tiêu đề và chuyển tiếp thành công ${forwardedCount} email tới ${config.targetEmail}.`
+  };
 }
 
 export async function runAutoForwardBatchAllUsers() {
