@@ -8,17 +8,22 @@
   ],
   "scripts": {
     "dev": "concurrently -n API,WEB -c blue,green \"npm run dev -w server\" \"npm run dev -w client\"",
-    "build": "npm run build -w client && npm run build -w server",
+    "build": "prisma generate --schema=./server/prisma/schema.prisma && prisma db push --schema=./server/prisma/schema.prisma && npm run build -w client && npm run build -w server",
     "start": "npm run start -w server",
     "test": "npm run test -w server && npm run test -w client",
-    "db:generate": "npm run db:generate -w server",
+    "db:generate": "prisma generate --schema=./server/prisma/schema.prisma",
+    "db:push": "prisma db push --schema=./server/prisma/schema.prisma",
     "db:migrate": "npm run db:migrate -w server",
     "db:deploy": "npm run db:deploy -w server",
     "db:studio": "npm run db:studio -w server"
   },
+  "dependencies": {
+    "@prisma/client": "^6.12.0"
+  },
   "devDependencies": {
     "concurrently": "^9.2.0",
-    "dotenv-cli": "^8.0.0"
+    "dotenv-cli": "^8.0.0",
+    "prisma": "^6.12.0"
   },
   "engines": {
     "node": ">=20"
