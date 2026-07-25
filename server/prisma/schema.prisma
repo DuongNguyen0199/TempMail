@@ -45,7 +45,7 @@ model AutoForwardConfig {
   userId             String   @unique
   enabled            Boolean  @default(true)
   targetEmail        String   @default("duongrbt@gmail.com")
-  subjectsJson       String   @default("[\"OutSystems Certification Voucher\",\"Thank you for being part of the OutSystems Referral Program!\"]")
+  subjectsJson       String   @default("[\"OutSystems\"]")
   mailProvider       String   @default("smtp")
   fromEmail          String?
   apiSecretEncrypted String?

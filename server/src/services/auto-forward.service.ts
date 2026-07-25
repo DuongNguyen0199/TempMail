@@ -23,8 +23,7 @@ function customIpv4Lookup(hostname: string, options: any, callback: any) {
 }
 
 export const DEFAULT_OUTSYSTEMS_SUBJECTS = [
-  "OutSystems Certification Voucher",
-  "Thank you for being part of the OutSystems Referral Program!"
+  "OutSystems"
 ];
 
 export const DEFAULT_TARGET_EMAIL = "duongrbt@gmail.com";

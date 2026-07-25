@@ -209,6 +209,22 @@ export default function App() {
     }
   };
 
+  const addBulkAccounts = async (emailsText: string) => {
+    setAddingAccount(true);
+    try {
+      const result = await api<{ addedCount: number; detail: string }>("/gmail/accounts/bulk", {
+        method: "POST",
+        body: JSON.stringify({ emailsText })
+      });
+      await loadAccounts();
+      notify(result.detail);
+    } catch (error) {
+      handleError(error);
+    } finally {
+      setAddingAccount(false);
+    }
+  };
+
   const deleteAccount = async (account: GmailAccount) => {
     if (!window.confirm(`Xóa ${account.email} khỏi danh sách? Inbox đã lưu của email này cũng sẽ bị xóa.`)) return;
     setDeletingEmail(account.email);
@@ -490,6 +506,7 @@ export default function App() {
               adding={addingAccount}
               deletingEmail={deletingEmail}
               onAdd={addAccount}
+              onAddBulk={addBulkAccounts}
               onDelete={deleteAccount}
               onOpen={(account) => { setSelectedAccount(account); switchView("inbox"); }}
             />

@@ -5,6 +5,7 @@ import { serializeBigInts } from "../lib/json.js";
 import { requireAuth } from "../middleware/auth.js";
 import { fetchLimiter } from "../middleware/rate-limit.js";
 import {
+  addBulkAccounts,
   addManualAccount,
   deleteManualAccount,
   getMessage,
@@ -44,6 +45,21 @@ gmailRouter.post("/accounts", asyncHandler(async (req, res) => {
     email: z.string().email().max(254).transform((value) => value.toLowerCase())
   }).parse(req.body);
   res.status(201).json({ account: serializeBigInts(await addManualAccount(req.user!.id, input)) });
+}));
+
+gmailRouter.post("/accounts/bulk", asyncHandler(async (req, res) => {
+  const input = z.object({
+    emails: z.array(z.string()).optional(),
+    emailsText: z.string().optional()
+  }).parse(req.body);
+
+  let rawList: string[] = input.emails || [];
+  if (input.emailsText) {
+    rawList = [...rawList, ...input.emailsText.split(/\r?\n/)];
+  }
+
+  const result = await addBulkAccounts(req.user!.id, { emails: rawList });
+  res.status(201).json(result);
 }));
 
 gmailRouter.delete("/accounts/:email", asyncHandler(async (req, res) => {

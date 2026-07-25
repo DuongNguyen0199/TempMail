@@ -149,6 +149,93 @@ export async function addManualAccount(userId: string, input: { email: string })
   return account;
 }
 
+export async function addBulkAccounts(userId: string, input: { emails: string[] }) {
+  // 1. Kiểm tra cấu hình Auto Forward trước khi thêm hàng loạt
+  const forwardConfig = await getOrCreateAutoForwardConfig(userId);
+
+  if (!forwardConfig.enabled) {
+    throw new ApiError(
+      400,
+      "Vui lòng BẬT tính năng tự động gửi email trong mục Cài đặt trước khi thêm Gmail.",
+      "FORWARD_CONFIG_DISABLED"
+    );
+  }
+
+  if (!forwardConfig.targetEmail || !forwardConfig.targetEmail.trim()) {
+    throw new ApiError(
+      400,
+      "Vui lòng thiết lập Email nhận chuyển tiếp (Target Email) trong mục Cài đặt trước khi thêm Gmail.",
+      "TARGET_EMAIL_REQUIRED"
+    );
+  }
+
+  if (!forwardConfig.subjects || forwardConfig.subjects.length === 0) {
+    throw new ApiError(
+      400,
+      "Vui lòng thiết lập ít nhất 1 tiêu đề Subject lọc trong mục Cài đặt trước khi thêm Gmail.",
+      "SUBJECT_FILTERS_REQUIRED"
+    );
+  }
+
+  // 2. Parse & làm sạch danh sách email
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const validEmails = Array.from(
+    new Set(
+      input.emails
+        .map((e) => e.trim().toLowerCase())
+        .filter((e) => emailRegex.test(e))
+    )
+  );
+
+  if (validEmails.length === 0) {
+    throw new ApiError(400, "Không tìm thấy địa chỉ Gmail hợp lệ nào trong danh sách dán vào.", "NO_VALID_EMAILS");
+  }
+
+  // 3. Upsert hàng loạt vào database
+  let addedCount = 0;
+  for (const email of validEmails) {
+    try {
+      await prisma.gmailAccount.upsert({
+        where: { userId_email: { userId, email } },
+        create: {
+          userId,
+          email,
+          type: "manual",
+          rawJson: toJsonValue({ source: "manual_bulk", email })
+        },
+        update: {
+          type: "manual"
+        }
+      });
+      addedCount++;
+    } catch (err) {
+      console.error(`[BulkAddGmail] Error adding ${email}:`, err);
+    }
+  }
+
+  // 4. Tự động đồng bộ inbox & chạy batch lọc/gửi mail tự động cho toàn bộ Gmail vừa thêm
+  try {
+    console.log(`[BulkAddGmail] Auto syncing & running batch filter for ${addedCount} new Gmail accounts...`);
+    for (const email of validEmails) {
+      try {
+        await syncInbox(userId, email);
+      } catch (err) {
+        console.error(`[BulkAddGmail] Sync error for ${email}:`, err);
+      }
+    }
+    await runAutoForwardBatchForUser(userId);
+  } catch (err) {
+    console.error("[BulkAddGmail] Error running forward batch after bulk insert:", err);
+  }
+
+  return {
+    success: true,
+    addedCount,
+    totalParsed: validEmails.length,
+    detail: `Đã thêm thành công ${addedCount} Gmail và hoàn tất tự động quét lọc mail theo tiêu đề OutSystems!`
+  };
+}
+
 export async function deleteManualAccount(userId: string, email: string) {
   const account = await ownedAccount(userId, email);
   await prisma.gmailAccount.delete({ where: { id: account.id } });
