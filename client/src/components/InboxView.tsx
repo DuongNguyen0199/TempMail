@@ -121,8 +121,24 @@ export function InboxView({
           ) : messages.length === 0 ? (
             <div className="empty-state">
               <span className="empty-icon"><MailOpen size={24} /></span>
-              <h3>{globalSearchMode ? "Không tìm thấy kết quả" : "Inbox đang trống"}</h3>
-              <p>{globalSearchMode ? "Thử thay đổi từ khóa tìm kiếm." : "Thử refresh hoặc xóa bộ lọc hiện tại."}</p>
+              <h3>{globalSearchMode ? "Không tìm thấy kết quả" : "Inbox chưa có dữ liệu email nào"}</h3>
+              <p>
+                {globalSearchMode
+                  ? "Thử thay đổi từ khóa tìm kiếm."
+                  : "Gmail này mới được tạo hoặc chưa có thư mới gửi tới. Bạn thử bấm nút Refresh bên dưới hoặc kiểm tra API Key Sonjj trong Cài đặt."}
+              </p>
+              {!globalSearchMode && (
+                <button
+                  type="button"
+                  className="button button--secondary"
+                  style={{ marginTop: "12px", display: "inline-flex", alignItems: "center", gap: "6px" }}
+                  onClick={onSync}
+                  disabled={syncing}
+                >
+                  <RotateCw size={15} className={syncing ? "spin" : ""} />
+                  <span>{syncing ? "Đang quét email mới..." : "Quét email ngay (Refresh)"}</span>
+                </button>
+              )}
             </div>
           ) : messages.map((message) => (
             <button
