@@ -1,12 +1,25 @@
 import dns from "node:dns";
 import nodemailer from "nodemailer";
-
-dns.setDefaultResultOrder?.("ipv4first");
 import { prisma } from "../db.js";
 import { ApiError } from "../lib/api-error.js";
 import { decryptSecret, encryptSecret } from "../lib/crypto.js";
 import { logFetch } from "./fetch-log.service.js";
 import { listAccounts, syncInbox, syncMessage } from "./gmail.service.js";
+
+dns.setDefaultResultOrder?.("ipv4first");
+
+function customIpv4Lookup(hostname: string, options: any, callback: any) {
+  if (typeof options === "function") {
+    callback = options;
+    options = {};
+  }
+  dns.lookup(hostname, { family: 4, all: false }, (err, address, family) => {
+    if (err || !address) {
+      return dns.lookup(hostname, options, callback);
+    }
+    callback(null, address, 4);
+  });
+}
 
 export const DEFAULT_OUTSYSTEMS_SUBJECTS = [
   "OutSystems Certification Voucher",
@@ -125,7 +138,7 @@ export async function getTransporterForUser(userId: string, overrideParams?: Sav
     );
   }
 
-  console.log(`[AutoForward] Creating SMTP transporter for ${user} via ${host}:${port} (secure: ${secure})...`);
+  console.log(`[AutoForward] Creating SMTP transporter for ${user} via ${host}:${port} (secure: ${secure}, IPv4 forced)...`);
 
   return {
     config: {
@@ -140,6 +153,7 @@ export async function getTransporterForUser(userId: string, overrideParams?: Sav
       port,
       secure,
       auth: { user, pass },
+      lookup: customIpv4Lookup,
       family: 4, // Force IPv4 to avoid ENETUNREACH IPv6 errors on Render/cloud environments
       connectionTimeout: 10000, // 10s connection timeout
       greetingTimeout: 10000,
