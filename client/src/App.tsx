@@ -9,11 +9,13 @@ import {
   Plus,
   Search,
   Settings,
+  Terminal,
   X
 } from "lucide-react";
 import { api, ApiClientError } from "./api";
 import { AccountsView } from "./components/AccountsView";
 import { AuthScreen } from "./components/AuthScreen";
+import { ConsoleMonitorModal } from "./components/ConsoleMonitorModal";
 import { InboxView } from "./components/InboxView";
 import { SettingsView } from "./components/SettingsView";
 import type { GmailAccount, InboxMessage, Pagination, User } from "./types";
@@ -45,6 +47,7 @@ export default function App() {
   const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [searchInput, setSearchInput] = useState({ sender: "", subject: "" });
   const [globalSearchActive, setGlobalSearchActive] = useState(false);
+  const [monitorOpen, setMonitorOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const subjectInputRef = useRef<HTMLInputElement>(null);
 
@@ -435,11 +438,22 @@ export default function App() {
               </div>
             </div>
           )}
-          <button className="profile-chip" onClick={() => switchView("settings")}>
-            <span>{initials(user.username || user.email)}</span>
-            <div><strong>{user.username || "Workspace"}</strong><small>{user.email}</small></div>
-            <ChevronDown size={15} />
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <button
+              className="button button--secondary"
+              style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", padding: "6px 12px" }}
+              onClick={() => setMonitorOpen(true)}
+              title="Mở Trình giám sát Console F12 Logs"
+            >
+              <Terminal size={16} color="#6366f1" />
+              <span>F12 Logs</span>
+            </button>
+            <button className="profile-chip" onClick={() => switchView("settings")}>
+              <span>{initials(user.username || user.email)}</span>
+              <div><strong>{user.username || "Workspace"}</strong><small>{user.email}</small></div>
+              <ChevronDown size={15} />
+            </button>
+          </div>
         </header>
 
         <div className="main-content">
@@ -483,6 +497,8 @@ export default function App() {
           {view === "settings" && <SettingsView notify={notify} />}
         </div>
       </main>
+
+      <ConsoleMonitorModal isOpen={monitorOpen} onClose={() => setMonitorOpen(false)} />
 
       <div className="toast-stack">
         {toasts.map((toast) => (
