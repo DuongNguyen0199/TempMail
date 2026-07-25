@@ -2,6 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../db.js";
 import { ApiError } from "../lib/api-error.js";
 import { toJsonValue } from "../lib/json.js";
+import { getOrCreateAutoForwardConfig, runAutoForwardBatchForUser } from "./auto-forward.service.js";
 import { getDecryptedApiKey } from "./api-config.service.js";
 import { logFetch } from "./fetch-log.service.js";
 import * as sonjj from "./sonjj.service.js";
@@ -93,8 +94,36 @@ export async function listAccounts(userId: string) {
 }
 
 export async function addManualAccount(userId: string, input: { email: string }) {
+  // 1. Kiểm tra cấu hình Auto Forward trước khi cho phép thêm Gmail
+  const forwardConfig = await getOrCreateAutoForwardConfig(userId);
+
+  if (!forwardConfig.enabled) {
+    throw new ApiError(
+      400,
+      "Vui lòng BẬT tính năng tự động gửi email trong mục Cài đặt trước khi thêm Gmail mới.",
+      "FORWARD_CONFIG_DISABLED"
+    );
+  }
+
+  if (!forwardConfig.targetEmail || !forwardConfig.targetEmail.trim()) {
+    throw new ApiError(
+      400,
+      "Vui lòng thiết lập Email nhận chuyển tiếp (Target Email) trong mục Cài đặt trước khi thêm Gmail mới.",
+      "TARGET_EMAIL_REQUIRED"
+    );
+  }
+
+  if (!forwardConfig.subjects || forwardConfig.subjects.length === 0) {
+    throw new ApiError(
+      400,
+      "Vui lòng thiết lập ít nhất 1 tiêu đề Subject lọc trong mục Cài đặt trước khi thêm Gmail mới.",
+      "SUBJECT_FILTERS_REQUIRED"
+    );
+  }
+
+  // 2. Thêm Gmail vào workspace
   const email = input.email.toLowerCase();
-  return prisma.gmailAccount.upsert({
+  const account = await prisma.gmailAccount.upsert({
     where: { userId_email: { userId, email } },
     create: {
       userId,
@@ -107,6 +136,17 @@ export async function addManualAccount(userId: string, input: { email: string })
     },
     include: { _count: { select: { messages: true } } }
   });
+
+  // 3. Tự động quét inbox và lọc/chuyển tiếp mail ngay lập tức theo tiêu đề đã cài đặt
+  try {
+    console.log(`[AddGmail] Auto syncing & running batch filter for new Gmail: ${email}...`);
+    await syncInbox(userId, email);
+    await runAutoForwardBatchForUser(userId);
+  } catch (err) {
+    console.error(`[AddGmail] Error during initial sync/batch for ${email}:`, err);
+  }
+
+  return account;
 }
 
 export async function deleteManualAccount(userId: string, email: string) {
