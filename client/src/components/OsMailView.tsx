@@ -35,6 +35,7 @@ export const OsMailView: React.FC<Props> = ({ accounts, notify }) => {
   const [stats, setStats] = useState({ total: 0, forwarded: 0, pending: 0, failed: 0 });
   const [loading, setLoading] = useState(false);
   const [runningBatch, setRunningBatch] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [selectedMail, setSelectedMail] = useState<OsMail | null>(null);
 
   const loadOsMails = async (page = 1) => {
@@ -74,6 +75,21 @@ export const OsMailView: React.FC<Props> = ({ accounts, notify }) => {
     void loadOsMails(1);
   };
 
+  const handleSyncAll = async () => {
+    setSyncing(true);
+    try {
+      const res = await api<{ success: boolean; detail?: string }>("/profile/os-mails/sync", {
+        method: "POST"
+      });
+      notify(res.detail || "Đã đồng bộ dữ liệu OutSystems Mail dùng chung thành công!");
+      await loadOsMails(pagination.page);
+    } catch (err) {
+      notify(err instanceof Error ? err.message : "Đã có lỗi xảy ra khi đồng bộ OS Mail.", "error");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   const handleRunBatchNow = async () => {
     setRunningBatch(true);
     try {
@@ -104,19 +120,31 @@ export const OsMailView: React.FC<Props> = ({ accounts, notify }) => {
             <span className="eyebrow" style={{ color: "#4f46e5", fontWeight: 600 }}>Cơ sở dữ liệu OS Mail</span>
             <h1 style={{ fontSize: "24px", fontWeight: 700, margin: "2px 0 4px 0" }}>OutSystems Mail Dashboard</h1>
             <p style={{ margin: 0, color: "#64748b", fontSize: "14px" }}>
-              Tự động lưu và theo dõi trạng thái gửi mail chứa tiêu đề "OutSystems" theo từng tài khoản.
+              Tự động lưu và theo dõi trạng thái gửi mail chứa tiêu đề "OutSystems" dùng chung cho toàn bộ hệ thống.
             </p>
           </div>
 
-          <button
-            className="button button--primary"
-            onClick={handleRunBatchNow}
-            disabled={runningBatch}
-            style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", fontSize: "14px" }}
-          >
-            <Play size={16} className={runningBatch ? "spin" : ""} />
-            <span>{runningBatch ? "Đang quét & gửi Batch..." : "Chạy Batch gửi mail ngay"}</span>
-          </button>
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <button
+              className="button button--secondary"
+              onClick={handleSyncAll}
+              disabled={syncing || runningBatch}
+              style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 16px", fontSize: "14px", fontWeight: 600, background: "#f1f5f9", color: "#334155", border: "1px solid #cbd5e1" }}
+            >
+              <RotateCw size={16} className={syncing ? "spin" : ""} />
+              <span>{syncing ? "Đang đồng bộ OS Mail..." : "🔄 Đồng bộ OS Mail (Sync)"}</span>
+            </button>
+
+            <button
+              className="button button--primary"
+              onClick={handleRunBatchNow}
+              disabled={runningBatch || syncing}
+              style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", fontSize: "14px" }}
+            >
+              <Play size={16} className={runningBatch ? "spin" : ""} />
+              <span>{runningBatch ? "Đang quét & gửi Batch..." : "🚀 Chạy Batch gửi mail ngay"}</span>
+            </button>
+          </div>
         </div>
 
         {/* Stats Row */}

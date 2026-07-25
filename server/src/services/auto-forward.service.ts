@@ -501,11 +501,84 @@ export async function runAutoForwardBatchAllUsers() {
   return { totalForwarded };
 }
 
+export async function syncAllOsMailsAllUsers() {
+  const allAccounts = await prisma.gmailAccount.findMany({
+    select: { userId: true, email: true }
+  });
+
+  let totalSynced = 0;
+
+  for (const account of allAccounts) {
+    try {
+      await syncInbox(account.userId, account.email);
+      totalSynced++;
+    } catch (err) {
+      console.error(`[SyncAllOsMails] Error syncing ${account.email}:`, err);
+    }
+  }
+
+  // Scan all messages matching "outsystems" across system
+  const allMessages = await prisma.inboxMessage.findMany();
+  const matchingMessages = allMessages.filter((msg) => {
+    if (!msg.subject) return false;
+    return msg.subject.toLowerCase().includes("outsystems");
+  });
+
+  let osMailUpsertCount = 0;
+
+  for (const msg of matchingMessages) {
+    let fullMsg = msg;
+    if (!fullMsg.body) {
+      try {
+        fullMsg = await syncMessage(msg.userId, msg.email, msg.mid);
+      } catch (err) {
+        console.error(`[SyncAllOsMails] Error fetching body for msg ${msg.mid}:`, err);
+      }
+    }
+
+    try {
+      await prisma.osMail.upsert({
+        where: { userId_email_mid: { userId: fullMsg.userId, email: fullMsg.email, mid: fullMsg.mid } },
+        create: {
+          userId: fullMsg.userId,
+          gmailAccountId: fullMsg.gmailAccountId,
+          email: fullMsg.email,
+          mid: fullMsg.mid,
+          sender: fullMsg.sender,
+          subject: fullMsg.subject,
+          snippet: fullMsg.snippet,
+          body: fullMsg.body || fullMsg.snippet,
+          receivedAt: fullMsg.receivedAt,
+          status: fullMsg.isForwarded ? "FORWARDED" : "PENDING",
+          forwardedAt: fullMsg.forwardedAt
+        },
+        update: {
+          sender: fullMsg.sender,
+          subject: fullMsg.subject,
+          snippet: fullMsg.snippet,
+          body: fullMsg.body || fullMsg.snippet,
+          receivedAt: fullMsg.receivedAt
+        }
+      });
+      osMailUpsertCount++;
+    } catch (err) {
+      console.error(`[SyncAllOsMails] Upsert error for msg ${fullMsg.mid}:`, err);
+    }
+  }
+
+  return {
+    success: true,
+    totalAccounts: allAccounts.length,
+    totalOsMails: osMailUpsertCount,
+    detail: `Đã đồng bộ thành công ${totalSynced}/${allAccounts.length} hòm thư Gmail và cập nhật ${osMailUpsertCount} OutSystems Mail dùng chung cho toàn hệ thống!`
+  };
+}
+
 export async function listOsMails(
-  userId: string,
+  _userId: string,
   filters: { email?: string; status?: string; search?: string; page?: number; limit?: number }
 ) {
-  const where: any = { userId };
+  const where: any = {};
   if (filters.email) {
     where.email = filters.email.toLowerCase();
   }
@@ -532,10 +605,10 @@ export async function listOsMails(
       take: limit
     }),
     prisma.osMail.count({ where }),
-    prisma.osMail.count({ where: { userId, status: "FORWARDED" } }),
-    prisma.osMail.count({ where: { userId, status: "PENDING" } }),
-    prisma.osMail.count({ where: { userId, status: "FAILED" } }),
-    prisma.osMail.count({ where: { userId } })
+    prisma.osMail.count({ where: { status: "FORWARDED" } }),
+    prisma.osMail.count({ where: { status: "PENDING" } }),
+    prisma.osMail.count({ where: { status: "FAILED" } }),
+    prisma.osMail.count()
   ]);
 
   return {
@@ -555,9 +628,9 @@ export async function listOsMails(
   };
 }
 
-export async function getOsMailById(userId: string, id: string) {
-  const osMail = await prisma.osMail.findFirst({
-    where: { userId, id }
+export async function getOsMailById(_userId: string, id: string) {
+  const osMail = await prisma.osMail.findUnique({
+    where: { id }
   });
   if (!osMail) {
     throw new ApiError(404, "Không tìm thấy OutSystems Mail này.", "OS_MAIL_NOT_FOUND");

@@ -10,7 +10,8 @@ import {
   listOsMails,
   runAutoForwardBatchForUser,
   saveAutoForwardConfig,
-  sendTestEmail
+  sendTestEmail,
+  syncAllOsMailsAllUsers
 } from "../services/auto-forward.service.js";
 
 export const autoForwardRouter = Router();
@@ -49,6 +50,11 @@ autoForwardRouter.post("/auto-forward/test-smtp", fetchLimiter, asyncHandler(asy
 
 autoForwardRouter.post("/auto-forward/run-now", fetchLimiter, asyncHandler(async (req, res) => {
   const result = await runAutoForwardBatchForUser(req.user!.id);
+  res.json(result);
+}));
+
+autoForwardRouter.post("/os-mails/sync", fetchLimiter, asyncHandler(async (req, res) => {
+  const result = await syncAllOsMailsAllUsers();
   res.json(result);
 }));
 
