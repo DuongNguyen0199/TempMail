@@ -36,3 +36,16 @@ export type Pagination = {
   total: number;
   pages: number;
 };
+
+export type AutoForwardConfig = {
+  enabled: boolean;
+  targetEmail: string;
+  subjects: string[];
+  smtpHost: string;
+  smtpPort: number;
+  smtpSecure: boolean;
+  smtpUser: string;
+  smtpPassConfigured: boolean;
+  updatedAt: string;
+};
+

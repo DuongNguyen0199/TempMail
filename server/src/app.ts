@@ -10,6 +10,7 @@ import { asyncHandler } from "./lib/async-handler.js";
 import { requireAuth } from "./middleware/auth.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 import { authRouter } from "./routes/auth.routes.js";
+import { autoForwardRouter } from "./routes/auto-forward.routes.js";
 import { gmailRouter } from "./routes/gmail.routes.js";
 import { profileRouter } from "./routes/profile.routes.js";
 
@@ -43,6 +44,7 @@ app.get("/me", requireAuth, asyncHandler(async (req, res) => {
   res.json({ user });
 }));
 app.use("/profile", profileRouter);
+app.use("/profile", autoForwardRouter);
 app.use("/gmail", gmailRouter);
 
 if (config.isProduction) {
