@@ -336,13 +336,22 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
               </label>
 
               <label className="key-field">
-                SMTP Password / App Password {autoForwardConfig?.smtpPassConfigured && "(Đã lưu)"}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "4px" }}>
+                  <span>SMTP Password / App Password</span>
+                  {autoForwardConfig?.smtpPassConfigured ? (
+                    <span className="status-pill status-pill--ok" style={{ fontSize: "12px", padding: "2px 8px" }}>
+                      <Check size={13} style={{ marginRight: "4px" }} /> Đã lưu thành công
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: "12px", color: "#6b7280" }}>Chưa lưu mật khẩu</span>
+                  )}
+                </div>
                 <div className="input-with-action">
                   <input
                     type={visibleSmtpPass ? "text" : "password"}
                     value={smtpPass}
                     onChange={(e) => setSmtpPass(e.target.value)}
-                    placeholder={autoForwardConfig?.smtpPassConfigured ? "Đã lưu (nhập mới nếu đổi)" : "Nhập Mật khẩu ứng dụng"}
+                    placeholder={autoForwardConfig?.smtpPassConfigured ? "•••••••••••••••• (Đã lưu - nhập mới nếu đổi)" : "Nhập Mật khẩu ứng dụng 16 ký tự"}
                   />
                   <button type="button" onClick={() => setVisibleSmtpPass(!visibleSmtpPass)}>
                     {visibleSmtpPass ? <EyeOff size={18} /> : <Eye size={18} />}

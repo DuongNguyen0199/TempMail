@@ -1,4 +1,7 @@
+import dns from "node:dns";
 import nodemailer from "nodemailer";
+
+dns.setDefaultResultOrder?.("ipv4first");
 import { prisma } from "../db.js";
 import { ApiError } from "../lib/api-error.js";
 import { decryptSecret, encryptSecret } from "../lib/crypto.js";
@@ -137,10 +140,11 @@ export async function getTransporterForUser(userId: string, overrideParams?: Sav
       port,
       secure,
       auth: { user, pass },
+      family: 4, // Force IPv4 to avoid ENETUNREACH IPv6 errors on Render/cloud environments
       connectionTimeout: 10000, // 10s connection timeout
       greetingTimeout: 10000,
       socketTimeout: 15000
-    })
+    } as any)
   };
 }
 
