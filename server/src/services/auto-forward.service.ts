@@ -352,86 +352,83 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
     where: { userId }
   });
 
-  const fromEmail = input.fromEmail?.trim() || dbConfig?.smtpUser || "";
+  // Header From Email hiển thị trên thư (Ví dụ: louellagonzale.z1201.5@gmail.com)
+  const headerFromEmail = input.fromEmail?.trim() || dbConfig?.smtpUser || "onboarding@resend.dev";
 
-  // 1. Tự động tìm password: Ưu tiên input.smtpPass -> GmailAccount.password -> AutoForwardConfig.smtpPass
-  let pass: string | undefined = input.smtpPass?.trim();
+  // Tài khoản SMTP Master dùng để xác thực kết nối (Cấu hình trong Cài Đặt)
+  const smtpUser = dbConfig?.smtpUser || headerFromEmail;
+  let smtpPass: string | undefined = input.smtpPass?.trim();
 
-  if (!pass && fromEmail) {
+  // Kiểm tra nếu tài khoản có mật khẩu riêng được lưu trong CSDL
+  if (!smtpPass && headerFromEmail) {
     const account = await prisma.gmailAccount.findFirst({
-      where: { userId, email: fromEmail.toLowerCase() }
+      where: { userId, email: headerFromEmail.toLowerCase() }
     });
     if (account && account.password) {
-      pass = account.password;
+      smtpPass = account.password;
     }
   }
 
-  if (!pass && dbConfig?.smtpPassEncrypted) {
-    pass = decryptSecret(dbConfig.smtpPassEncrypted);
+  // Lấy mật khẩu Master SMTP từ Cài Đặt nếu không có mật khẩu riêng
+  if (!smtpPass && dbConfig?.smtpPassEncrypted) {
+    smtpPass = decryptSecret(dbConfig.smtpPassEncrypted);
   }
 
-  const provider = dbConfig?.mailProvider || "sonjj";
-
-  // Nếu dùng Resend hoặc Brevo HTTP API
-  if (provider === "resend" || provider === "brevo") {
-    const emailOpts: EmailOptions = {
-      to: input.to[0],
-      subject: input.subject,
-      text: input.bodyText || "",
-      html: input.bodyHtml || input.bodyText || ""
-    };
-    return sendEmailMessage(userId, emailOpts, { fromEmail });
-  }
-
-  // Dùng Sonjj SMTP Relay hoặc Direct SMTP
-  const user = fromEmail || dbConfig?.smtpUser || "";
   const host = input.smtpHost?.trim() || dbConfig?.smtpHost || "smtp.gmail.com";
   const port = input.smtpPort || dbConfig?.smtpPort || 587;
+  const provider = dbConfig?.mailProvider || "sonjj";
 
-  if (!user || !pass) {
+  // Dịch vụ 1: Resend HTTP API
+  if (provider === "resend") {
+    let apiSecret = dbConfig?.apiSecretEncrypted ? decryptSecret(dbConfig.apiSecretEncrypted) : undefined;
+    if (!apiSecret) {
+      throw new ApiError(400, "Vui lòng nhập API Key Resend trong phần Cài đặt trước.", "RESEND_KEY_REQUIRED");
+    }
+    console.log(`[SendCustomEmail] Sending via Resend with From Header: ${headerFromEmail}...`);
+    try {
+      await axios.post(
+        "https://api.resend.com/emails",
+        {
+          from: headerFromEmail.includes("<") ? headerFromEmail : `${headerFromEmail.split("@")[0]} <${headerFromEmail}>`,
+          to: input.to,
+          cc: input.cc,
+          bcc: input.bcc,
+          subject: input.subject,
+          text: input.bodyText,
+          html: input.bodyHtml || input.bodyText
+        },
+        {
+          headers: { Authorization: `Bearer ${apiSecret}`, "Content-Type": "application/json" },
+          timeout: 15000
+        }
+      );
+      return { success: true, detail: `Đã gửi email thành công với tiêu đề người gửi là ${headerFromEmail}!` };
+    } catch (err: any) {
+      console.error("[SendCustomEmail] Resend Error:", err?.response?.data || err?.message);
+      const resendErr = err?.response?.data?.message || err?.message || "Lỗi Resend API";
+      throw new ApiError(400, `Lỗi Resend API: ${resendErr}`, "RESEND_ERROR");
+    }
+  }
+
+  // Dịch vụ 2: Sonjj SMTP Relay API
+  if (!smtpPass) {
     throw new ApiError(
       400,
-      `Chưa tìm thấy mật khẩu cho Gmail ${user}. Vui lòng nhập Mật khẩu ứng dụng (App Password 16 ký tự) hoặc lưu cấu hình trong mục Cài Đặt.`,
+      `Vui lòng nhập Mật khẩu ứng dụng (App Password) trong mục Cài Đặt. Hệ thống sẽ tự động dùng thông tin này làm Master SMTP Relay để gửi thư dưới tên ${headerFromEmail}.`,
       "SMTP_CREDENTIALS_REQUIRED"
     );
   }
 
-  // Tự động lưu mật khẩu vào cài đặt nếu người dùng yêu cầu
-  if (input.smtpPass?.trim() && (input.saveToSettings || !dbConfig?.smtpPassEncrypted)) {
-    try {
-      await prisma.autoForwardConfig.upsert({
-        where: { userId },
-        create: {
-          userId,
-          enabled: true,
-          targetEmail: user,
-          smtpUser: user,
-          smtpHost: host,
-          smtpPort: port,
-          smtpPassEncrypted: encryptSecret(input.smtpPass.trim())
-        },
-        update: {
-          smtpUser: user,
-          smtpHost: host,
-          smtpPort: port,
-          smtpPassEncrypted: encryptSecret(input.smtpPass.trim())
-        }
-      });
-    } catch (err) {
-      console.error("[SendCustomEmail] Error saving pass to settings:", err);
-    }
-  }
-
-  console.log(`[SendCustomEmail] Sending custom email from ${user} via Sonjj SMTP Relay to ${input.to.join(", ")}...`);
+  console.log(`[SendCustomEmail] Sending via Sonjj SMTP Relay. Auth user: ${smtpUser}, From Header: ${headerFromEmail}...`);
 
   const res = await sonjj.sendSmtpEmail(sonjjApiKey, {
     smtp_host: host,
     smtp_port: port,
-    smtp_user: user,
-    smtp_pass: pass,
+    smtp_user: smtpUser,
+    smtp_pass: smtpPass,
     use_tls: port === 587,
-    from_email: user,
-    from_name: "SmailBox User",
+    from_email: headerFromEmail,
+    from_name: headerFromEmail.split("@")[0],
     to: input.to,
     cc: input.cc && input.cc.length > 0 ? input.cc : undefined,
     bcc: input.bcc && input.bcc.length > 0 ? input.bcc : undefined,
@@ -441,21 +438,21 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
   });
 
   if (!res.success) {
-    throw new ApiError(400, `Lỗi gửi email từ ${user}: ${res.error_message || res.error_code || 'Không thể gửi email'}`, "SEND_FAILED");
+    throw new ApiError(400, `Lỗi Sonjj SMTP Relay: ${res.error_message || res.error_code || 'Gửi thất bại'}`, "SEND_FAILED");
   }
 
   await logFetch({
     userId,
     action: "send_smtp_email",
     endpoint: "/v1/send_smtp_email/",
-    requestParams: { from: user, to: input.to, subject: input.subject },
+    requestParams: { from: headerFromEmail, to: input.to, subject: input.subject },
     status: "success"
   });
 
   return {
     success: true,
     messageId: res.message_id,
-    detail: `Đã gửi email thành công từ ${user} tới ${input.to.join(", ")}!`
+    detail: `Đã gửi email thành công từ ${headerFromEmail} tới ${input.to.join(", ")}!`
   };
 }
 
