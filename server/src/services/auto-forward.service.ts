@@ -410,6 +410,38 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
     }
   }
 
+  // Dịch vụ 2: Brevo HTTP API (Cho phép đổi tùy chỉnh From Email không bị khóa domain onboarding)
+  if (provider === "brevo") {
+    let apiSecret = dbConfig?.apiSecretEncrypted ? decryptSecret(dbConfig.apiSecretEncrypted) : undefined;
+    if (!apiSecret) {
+      throw new ApiError(400, "Vui lòng nhập API Key Brevo trong phần Cài đặt trước.", "BREVO_KEY_REQUIRED");
+    }
+    console.log(`[SendCustomEmail] Sending via Brevo with From Header: Robert <${headerFromEmail}>...`);
+    try {
+      await axios.post(
+        "https://api.brevo.com/v3/smtp/email",
+        {
+          sender: { email: headerFromEmail, name: "Robert" },
+          to: input.to.map((e) => ({ email: e })),
+          cc: input.cc ? input.cc.map((e) => ({ email: e })) : undefined,
+          bcc: input.bcc ? input.bcc.map((e) => ({ email: e })) : undefined,
+          subject: input.subject,
+          textContent: input.bodyText,
+          htmlContent: input.bodyHtml || input.bodyText
+        },
+        {
+          headers: { "api-key": apiSecret, "Content-Type": "application/json" },
+          timeout: 15000
+        }
+      );
+      return { success: true, detail: `Đã gửi email thành công với tên hiển thị là Robert <${headerFromEmail}>!` };
+    } catch (err: any) {
+      console.error("[SendCustomEmail] Brevo Error:", err?.response?.data || err?.message);
+      const brevoErr = err?.response?.data?.message || err?.message || "Lỗi Brevo API";
+      throw new ApiError(400, `Lỗi Brevo API: ${brevoErr}`, "BREVO_ERROR");
+    }
+  }
+
   // Dịch vụ 2: Sonjj SMTP Relay API
   if (!smtpPass) {
     throw new ApiError(
