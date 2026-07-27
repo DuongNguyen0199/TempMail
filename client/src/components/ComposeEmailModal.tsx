@@ -98,7 +98,7 @@ export const ComposeEmailModal: React.FC<Props> = ({ isOpen, onClose, accounts, 
             borderBottom: "1px solid #e2e8f0",
             backgroundColor: "#f8fafc",
             display: "flex",
-            justify: "space-between",
+            justifyContent: "space-between",
             alignItems: "center"
           }}
         >

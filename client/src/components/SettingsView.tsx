@@ -50,7 +50,7 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
   const [subjectsText, setSubjectsText] = useState(
     "OutSystems Certification Voucher\nThank you for being part of the OutSystems Referral Program!"
   );
-  const [mailProvider, setMailProvider] = useState<"smtp" | "resend" | "brevo">("resend");
+  const [mailProvider, setMailProvider] = useState<"sonjj" | "smtp" | "resend" | "brevo">("sonjj");
   const [fromEmail, setFromEmail] = useState("onboarding@resend.dev");
   const [apiSecret, setApiSecret] = useState("");
   const [visibleApiSecret, setVisibleApiSecret] = useState(false);
