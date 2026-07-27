@@ -352,25 +352,51 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
     where: { userId }
   });
 
-  const user = input.fromEmail?.trim() || dbConfig?.smtpUser || "";
+  const fromEmail = input.fromEmail?.trim() || dbConfig?.smtpUser || "";
 
+  // 1. Tự động tìm password: Ưu tiên input.smtpPass -> GmailAccount.password -> AutoForwardConfig.smtpPass
   let pass: string | undefined = input.smtpPass?.trim();
+
+  if (!pass && fromEmail) {
+    const account = await prisma.gmailAccount.findFirst({
+      where: { userId, email: fromEmail.toLowerCase() }
+    });
+    if (account && account.password) {
+      pass = account.password;
+    }
+  }
+
   if (!pass && dbConfig?.smtpPassEncrypted) {
     pass = decryptSecret(dbConfig.smtpPassEncrypted);
   }
 
+  const provider = dbConfig?.mailProvider || "sonjj";
+
+  // Nếu dùng Resend hoặc Brevo HTTP API
+  if (provider === "resend" || provider === "brevo") {
+    const emailOpts: EmailOptions = {
+      to: input.to[0],
+      subject: input.subject,
+      text: input.bodyText || "",
+      html: input.bodyHtml || input.bodyText || ""
+    };
+    return sendEmailMessage(userId, emailOpts, { fromEmail });
+  }
+
+  // Dùng Sonjj SMTP Relay hoặc Direct SMTP
+  const user = fromEmail || dbConfig?.smtpUser || "";
   const host = input.smtpHost?.trim() || dbConfig?.smtpHost || "smtp.gmail.com";
   const port = input.smtpPort || dbConfig?.smtpPort || 587;
 
   if (!user || !pass) {
     throw new ApiError(
       400,
-      "Vui lòng nhập Mật khẩu ứng dụng Gmail (App Password 16 ký tự) để thực hiện gửi email.",
+      `Chưa tìm thấy mật khẩu cho Gmail ${user}. Vui lòng nhập Mật khẩu ứng dụng (App Password 16 ký tự) hoặc lưu cấu hình trong mục Cài Đặt.`,
       "SMTP_CREDENTIALS_REQUIRED"
     );
   }
 
-  // Tự động lưu mật khẩu vào cài đặt nếu người dùng yêu cầu hoặc chưa cài đặt
+  // Tự động lưu mật khẩu vào cài đặt nếu người dùng yêu cầu
   if (input.smtpPass?.trim() && (input.saveToSettings || !dbConfig?.smtpPassEncrypted)) {
     try {
       await prisma.autoForwardConfig.upsert({
@@ -396,7 +422,7 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
     }
   }
 
-  console.log(`[SendCustomEmail] Sending custom email via Sonjj SMTP Relay to ${input.to.join(", ")}...`);
+  console.log(`[SendCustomEmail] Sending custom email from ${user} via Sonjj SMTP Relay to ${input.to.join(", ")}...`);
 
   const res = await sonjj.sendSmtpEmail(sonjjApiKey, {
     smtp_host: host,
@@ -415,21 +441,21 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
   });
 
   if (!res.success) {
-    throw new ApiError(400, `Lỗi gửi email qua Sonjj SMTP Relay: ${res.error_message || res.error_code || 'Không thể gửi email'}`, "SEND_FAILED");
+    throw new ApiError(400, `Lỗi gửi email từ ${user}: ${res.error_message || res.error_code || 'Không thể gửi email'}`, "SEND_FAILED");
   }
 
   await logFetch({
     userId,
     action: "send_smtp_email",
     endpoint: "/v1/send_smtp_email/",
-    requestParams: { to: input.to, subject: input.subject },
+    requestParams: { from: user, to: input.to, subject: input.subject },
     status: "success"
   });
 
   return {
     success: true,
     messageId: res.message_id,
-    detail: `Đã gửi email thành công tới ${input.to.join(", ")}!`
+    detail: `Đã gửi email thành công từ ${user} tới ${input.to.join(", ")}!`
   };
 }
 
