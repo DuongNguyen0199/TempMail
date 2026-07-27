@@ -16,6 +16,7 @@ import {
 import { api, ApiClientError } from "./api";
 import { AccountsView } from "./components/AccountsView";
 import { AuthScreen } from "./components/AuthScreen";
+import { ComposeEmailModal } from "./components/ComposeEmailModal";
 import { ConsoleMonitorModal } from "./components/ConsoleMonitorModal";
 import { InboxView } from "./components/InboxView";
 import { OsMailView } from "./components/OsMailView";
@@ -50,6 +51,7 @@ export default function App() {
   const [searchInput, setSearchInput] = useState({ sender: "", subject: "" });
   const [globalSearchActive, setGlobalSearchActive] = useState(false);
   const [monitorOpen, setMonitorOpen] = useState(false);
+  const [composeOpen, setComposeOpen] = useState(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const subjectInputRef = useRef<HTMLInputElement>(null);
 
@@ -461,6 +463,16 @@ export default function App() {
           )}
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <button
+              className="button button--primary"
+              style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", padding: "6px 14px", fontWeight: 600 }}
+              onClick={() => setComposeOpen(true)}
+              title="Soạn & Gửi Email mới qua Sonjj SMTP Relay"
+            >
+              <Send size={15} />
+              <span>Soạn Email</span>
+            </button>
+
+            <button
               className="button button--secondary"
               style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "13px", padding: "6px 12px" }}
               onClick={() => setMonitorOpen(true)}
@@ -521,6 +533,13 @@ export default function App() {
           {view === "settings" && <SettingsView notify={notify} />}
         </div>
       </main>
+
+      <ComposeEmailModal
+        isOpen={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        accounts={accounts}
+        notify={notify}
+      />
 
       <ConsoleMonitorModal isOpen={monitorOpen} onClose={() => setMonitorOpen(false)} />
 

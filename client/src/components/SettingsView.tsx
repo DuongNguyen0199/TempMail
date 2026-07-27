@@ -341,9 +341,10 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
                   fontWeight: 500
                 }}
               >
-                <option value="resend">🚀 Resend HTTP API (Port 443 HTTPS - Miễn phí 3,000 mail/tháng - KHUYÊN DÙNG CHO RENDER)</option>
+                <option value="sonjj">🌐 Sonjj SMTP Relay API (Cổng HTTPS 443 - Khuyên dùng trên Render)</option>
+                <option value="resend">🚀 Resend HTTP API (Port 443 HTTPS - Miễn phí 3,000 mail/tháng)</option>
                 <option value="brevo">⚡ Brevo HTTP API (Port 443 HTTPS - Miễn phí 300 mail/ngày)</option>
-                <option value="smtp">📧 SMTP Server truyền thống (Port 587/465 - Có thể bị Render/VPS chặn)</option>
+                <option value="smtp">📧 SMTP Server truyền thống (Port 587/465)</option>
               </select>
             </label>
 

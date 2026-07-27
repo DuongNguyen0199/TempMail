@@ -10,6 +10,7 @@ import {
   listOsMails,
   runAutoForwardBatchForUser,
   saveAutoForwardConfig,
+  sendCustomEmail,
   sendTestEmail,
   syncAllOsMailsAllUsers
 } from "../services/auto-forward.service.js";
@@ -22,7 +23,7 @@ const autoForwardSchema = z.object({
   enabled: z.boolean().optional(),
   targetEmail: z.string().email("Email nhận không hợp lệ.").optional(),
   subjects: z.array(z.string()).optional(),
-  mailProvider: z.enum(["smtp", "resend", "brevo"]).optional(),
+  mailProvider: z.enum(["sonjj", "smtp", "resend", "brevo"]).optional(),
   fromEmail: z.string().trim().optional(),
   apiSecret: z.string().trim().optional(),
   smtpHost: z.string().trim().optional(),
@@ -51,6 +52,22 @@ autoForwardRouter.get("/auto-forward/scheduler-status", asyncHandler(async (_req
 autoForwardRouter.post("/auto-forward/test-smtp", fetchLimiter, asyncHandler(async (req, res) => {
   const input = autoForwardSchema.partial().parse(req.body || {});
   const result = await sendTestEmail(req.user!.id, input);
+  res.json(result);
+}));
+
+autoForwardRouter.post("/send-email", fetchLimiter, asyncHandler(async (req, res) => {
+  const schema = z.object({
+    fromEmail: z.string().optional(),
+    to: z.array(z.string().email("Email người nhận không hợp lệ.")).min(1, "Vui lòng nhập ít nhất 1 email nhận."),
+    cc: z.array(z.string().email()).optional(),
+    bcc: z.array(z.string().email()).optional(),
+    subject: z.string().trim().min(1, "Vui lòng nhập tiêu đề email."),
+    bodyText: z.string().optional(),
+    bodyHtml: z.string().optional()
+  });
+
+  const input = schema.parse(req.body);
+  const result = await sendCustomEmail(req.user!.id, input);
   res.json(result);
 }));
 

@@ -4,8 +4,10 @@ import nodemailer from "nodemailer";
 import { prisma } from "../db.js";
 import { ApiError } from "../lib/api-error.js";
 import { decryptSecret, encryptSecret } from "../lib/crypto.js";
+import { getDecryptedApiKey } from "./api-config.service.js";
 import { logFetch } from "./fetch-log.service.js";
 import { listAccounts, syncInbox, syncMessage } from "./gmail.service.js";
+import * as sonjj from "./sonjj.service.js";
 
 dns.setDefaultResultOrder?.("ipv4first");
 
@@ -32,7 +34,7 @@ export interface SaveAutoForwardInput {
   enabled?: boolean;
   targetEmail?: string;
   subjects?: string[];
-  mailProvider?: "smtp" | "resend" | "brevo";
+  mailProvider?: "sonjj" | "smtp" | "resend" | "brevo";
   fromEmail?: string;
   apiSecret?: string;
   smtpHost?: string;
@@ -54,7 +56,7 @@ export async function getOrCreateAutoForwardConfig(userId: string) {
         enabled: true,
         targetEmail: DEFAULT_TARGET_EMAIL,
         subjectsJson: JSON.stringify(DEFAULT_OUTSYSTEMS_SUBJECTS),
-        mailProvider: "smtp",
+        mailProvider: "sonjj",
         smtpHost: "smtp.gmail.com",
         smtpPort: 587,
         smtpSecure: false
@@ -76,7 +78,7 @@ export async function getOrCreateAutoForwardConfig(userId: string) {
     enabled: config.enabled,
     targetEmail: config.targetEmail,
     subjects,
-    mailProvider: config.mailProvider || "smtp",
+    mailProvider: (config.mailProvider as any) || "sonjj",
     fromEmail: config.fromEmail || "",
     apiSecretConfigured: hasApiSecret,
     smtpHost: config.smtpHost || "smtp.gmail.com",
@@ -143,7 +145,7 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
     where: { userId }
   });
 
-  const provider = overrideParams?.mailProvider || dbConfig?.mailProvider || "smtp";
+  const provider = overrideParams?.mailProvider || dbConfig?.mailProvider || "sonjj";
   const targetEmail = overrideParams?.targetEmail?.trim() || dbConfig?.targetEmail || DEFAULT_TARGET_EMAIL;
 
   let apiSecret: string | undefined = undefined;
@@ -155,7 +157,59 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
 
   const fromEmail = overrideParams?.fromEmail?.trim() || dbConfig?.fromEmail || overrideParams?.smtpUser?.trim() || dbConfig?.smtpUser || "onboarding@resend.dev";
 
-  // Provider 1: Resend HTTP API (Port 443 HTTPS - Never blocked)
+  // Provider 1: Sonjj SMTP Relay API (HTTPS Port 443 REST API - Recommended & Unblocked)
+  if (provider === "sonjj" || provider === "smtp") {
+    let sonjjApiKey = "";
+    try {
+      sonjjApiKey = await getDecryptedApiKey(userId);
+    } catch {
+      if (provider === "sonjj") throw new ApiError(400, "Vui lòng lưu API Key Sonjj/SmailPro trong phần Cài đặt trước.", "SONJJ_KEY_REQUIRED");
+    }
+
+    const host = overrideParams?.smtpHost?.trim() || dbConfig?.smtpHost || "smtp.gmail.com";
+    const port = overrideParams?.smtpPort || dbConfig?.smtpPort || 587;
+    const user = overrideParams?.smtpUser?.trim() || dbConfig?.smtpUser || "";
+
+    let pass: string | undefined = undefined;
+    if (overrideParams?.smtpPass && overrideParams.smtpPass.trim()) {
+      pass = overrideParams.smtpPass.trim();
+    } else if (dbConfig?.smtpPassEncrypted) {
+      pass = decryptSecret(dbConfig.smtpPassEncrypted);
+    }
+
+    if (sonjjApiKey && user && pass) {
+      console.log(`[AutoForward] Sending email via Sonjj SMTP Relay (HTTPS Port 443) to ${targetEmail}...`);
+      try {
+        const res = await sonjj.sendSmtpEmail(sonjjApiKey, {
+          smtp_host: host,
+          smtp_port: port,
+          smtp_user: user,
+          smtp_pass: pass,
+          use_tls: port === 587,
+          from_email: user,
+          from_name: "SmailBox AutoForward",
+          to: [targetEmail],
+          subject: options.subject,
+          body_text: options.text,
+          body_html: options.html
+        });
+
+        if (!res.success) {
+          throw new Error(res.error_message || res.error_code || "Sonjj SMTP Relay trả về lỗi.");
+        }
+
+        console.log(`[AutoForward] Sent successfully via Sonjj SMTP Relay API. MsgID: ${res.message_id || 'N/A'}`);
+        return { success: true, provider: "sonjj", messageId: res.message_id };
+      } catch (err: any) {
+        console.error("[AutoForward] Sonjj SMTP Relay Error:", err?.message || err);
+        if (provider === "sonjj") {
+          throw new ApiError(400, `Lỗi Sonjj SMTP Relay: ${err?.message || "Không thể gửi email qua Sonjj"}`, "SONJJ_RELAY_ERROR");
+        }
+      }
+    }
+  }
+
+  // Provider 2: Resend HTTP API (Port 443 HTTPS - Never blocked)
   if (provider === "resend") {
     if (!apiSecret) {
       throw new ApiError(400, "Vui lòng nhập API Key Resend (dạng re_xxxx).", "RESEND_KEY_REQUIRED");
@@ -188,7 +242,7 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
     }
   }
 
-  // Provider 2: Brevo HTTP API (Port 443 HTTPS - Never blocked)
+  // Provider 3: Brevo HTTP API (Port 443 HTTPS - Never blocked)
   if (provider === "brevo") {
     if (!apiSecret) {
       throw new ApiError(400, "Vui lòng nhập API Key Brevo.", "BREVO_KEY_REQUIRED");
@@ -221,7 +275,7 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
     }
   }
 
-  // Provider 3: Traditional SMTP (TCP 587/465)
+  // Provider 4: Traditional Direct Nodemailer SMTP
   const host = overrideParams?.smtpHost?.trim() || dbConfig?.smtpHost || "smtp.gmail.com";
   const port = overrideParams?.smtpPort || dbConfig?.smtpPort || 587;
   const secure = port === 465 ? true : (overrideParams?.smtpSecure ?? dbConfig?.smtpSecure ?? false);
@@ -237,12 +291,12 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
   if (!user || !pass) {
     throw new ApiError(
       400,
-      "Vui lòng nhập đầy đủ SMTP User và Mật khẩu ứng dụng (App Password) để kết nối.",
+      "Vui lòng nhập đầy đủ Email gửi (SMTP User) và Mật khẩu ứng dụng (App Password) để kết nối.",
       "SMTP_CREDENTIALS_REQUIRED"
     );
   }
 
-  console.log(`[AutoForward] Creating SMTP transporter for ${user} via ${host}:${port} (secure: ${secure}, IPv4 forced)...`);
+  console.log(`[AutoForward] Creating direct SMTP transporter for ${user} via ${host}:${port}...`);
 
   const transporter = nodemailer.createTransport({
     host,
@@ -264,18 +318,89 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
       text: options.text,
       html: options.html
     });
-    console.log(`[AutoForward] Sent successfully via SMTP.`);
+    console.log(`[AutoForward] Sent successfully via Direct SMTP.`);
     return { success: true, provider: "smtp" };
   } catch (error: any) {
     console.error("[AutoForward] SMTP Test Failed:", error);
     let errorMsg = error?.message || "Không thể kết nối đến máy chủ SMTP";
     if (errorMsg.includes("ENETUNREACH") || errorMsg.includes("ETIMEDOUT") || errorMsg.includes("timeout")) {
-      errorMsg = `Render/Mạng chặn cổng SMTP ${port}. Hãy chuyển sang dùng Resend HTTP API (Miễn phí, Port 443 không bị chặn) hoặc dùng VPS.`;
+      errorMsg = `Cổng SMTP ${port} bị môi trường máy chủ chặn. Hãy chuyển sang dùng Sonjj SMTP Relay (Cổng HTTPS 443 không bị chặn).`;
     } else if (errorMsg.includes("535") || errorMsg.includes("Username and Password not accepted")) {
       errorMsg = "Mật khẩu SMTP không đúng. Vui lòng đảm bảo dùng Mật khẩu ứng dụng (App Password 16 ký tự) của Gmail.";
     }
     throw new ApiError(400, `Lỗi gửi SMTP: ${errorMsg}`, "SMTP_ERROR");
   }
+}
+
+export interface CustomSendEmailInput {
+  fromEmail?: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  bodyText?: string;
+  bodyHtml?: string;
+}
+
+export async function sendCustomEmail(userId: string, input: CustomSendEmailInput) {
+  const sonjjApiKey = await getDecryptedApiKey(userId);
+  const dbConfig = await prisma.autoForwardConfig.findUnique({
+    where: { userId }
+  });
+
+  const user = input.fromEmail?.trim() || dbConfig?.smtpUser || "";
+
+  let pass: string | undefined = undefined;
+  if (dbConfig?.smtpPassEncrypted) {
+    pass = decryptSecret(dbConfig.smtpPassEncrypted);
+  }
+
+  const host = dbConfig?.smtpHost || "smtp.gmail.com";
+  const port = dbConfig?.smtpPort || 587;
+
+  if (!user || !pass) {
+    throw new ApiError(
+      400,
+      "Vui lòng nhập Email gửi và Mật khẩu ứng dụng (App Password 16 ký tự) trong mục Cài đặt trước khi soạn gửi email.",
+      "SMTP_CREDENTIALS_REQUIRED"
+    );
+  }
+
+  console.log(`[SendCustomEmail] Sending custom email via Sonjj SMTP Relay to ${input.to.join(", ")}...`);
+
+  const res = await sonjj.sendSmtpEmail(sonjjApiKey, {
+    smtp_host: host,
+    smtp_port: port,
+    smtp_user: user,
+    smtp_pass: pass,
+    use_tls: port === 587,
+    from_email: user,
+    from_name: "SmailBox User",
+    to: input.to,
+    cc: input.cc && input.cc.length > 0 ? input.cc : undefined,
+    bcc: input.bcc && input.bcc.length > 0 ? input.bcc : undefined,
+    subject: input.subject,
+    body_text: input.bodyText,
+    body_html: input.bodyHtml || input.bodyText
+  });
+
+  if (!res.success) {
+    throw new ApiError(400, `Lỗi gửi email qua Sonjj SMTP Relay: ${res.error_message || res.error_code || 'Không thể gửi email'}`, "SEND_FAILED");
+  }
+
+  await logFetch({
+    userId,
+    action: "send_smtp_email",
+    endpoint: "/v1/send_smtp_email/",
+    requestParams: { to: input.to, subject: input.subject },
+    status: "success"
+  });
+
+  return {
+    success: true,
+    messageId: res.message_id,
+    detail: `Đã gửi email thành công tới ${input.to.join(", ")}!`
+  };
 }
 
 export async function sendTestEmail(userId: string, overrideParams?: SaveAutoForwardInput) {
