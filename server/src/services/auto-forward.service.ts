@@ -187,7 +187,7 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
           smtp_pass: pass,
           use_tls: port === 587,
           from_email: user,
-          from_name: "SmailBox AutoForward",
+          from_name: "Robert",
           to: [targetEmail],
           subject: options.subject,
           body_text: options.text,
@@ -219,7 +219,7 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
       await axios.post(
         "https://api.resend.com/emails",
         {
-          from: fromEmail.includes("<") ? fromEmail : `SmailBox <${fromEmail}>`,
+          from: fromEmail.includes("<") ? fromEmail : `Robert <${fromEmail}>`,
           to: [targetEmail],
           subject: options.subject,
           text: options.text,
@@ -252,7 +252,7 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
       await axios.post(
         "https://api.brevo.com/v3/smtp/email",
         {
-          sender: { email: fromEmail.replace(/.*<|>/g, "") || "no-reply@smailbox.local", name: "SmailBox" },
+          sender: { email: fromEmail.replace(/.*<|>/g, "") || "no-reply@smailbox.local", name: "Robert" },
           to: [{ email: targetEmail }],
           subject: options.subject,
           textContent: options.text,
@@ -312,7 +312,7 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
 
   try {
     await transporter.sendMail({
-      from: `SmailBox AutoForward <${user}>`,
+      from: `Robert <${user}>`,
       to: targetEmail,
       subject: options.subject,
       text: options.text,
@@ -428,7 +428,7 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
     smtp_pass: smtpPass,
     use_tls: port === 587,
     from_email: headerFromEmail,
-    from_name: headerFromEmail.split("@")[0],
+    from_name: "Robert",
     to: input.to,
     cc: input.cc && input.cc.length > 0 ? input.cc : undefined,
     bcc: input.bcc && input.bcc.length > 0 ? input.bcc : undefined,
