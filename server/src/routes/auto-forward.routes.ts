@@ -58,6 +58,8 @@ autoForwardRouter.post("/auto-forward/test-smtp", fetchLimiter, asyncHandler(asy
 autoForwardRouter.post("/send-email", fetchLimiter, asyncHandler(async (req, res) => {
   const schema = z.object({
     fromEmail: z.string().optional(),
+    smtpPass: z.string().optional(),
+    saveToSettings: z.boolean().optional(),
     to: z.array(z.string().email("Email người nhận không hợp lệ.")).min(1, "Vui lòng nhập ít nhất 1 email nhận."),
     cc: z.array(z.string().email()).optional(),
     bcc: z.array(z.string().email()).optional(),

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { LoaderCircle, Mail, Send, X } from "lucide-react";
+import { KeyRound, LoaderCircle, Mail, Send, X } from "lucide-react";
 import { api } from "../api";
 import type { GmailAccount } from "../types";
 
@@ -12,6 +12,9 @@ interface Props {
 
 export const ComposeEmailModal: React.FC<Props> = ({ isOpen, onClose, accounts, notify }) => {
   const [fromEmail, setFromEmail] = useState(accounts[0]?.email || "");
+  const [smtpPass, setSmtpPass] = useState("");
+  const [saveToSettings, setSaveToSettings] = useState(true);
+  const [showAdvanced, setShowAdvanced] = useState(false);
   const [toText, setToText] = useState("");
   const [ccText, setCcText] = useState("");
   const [bccText, setBccText] = useState("");
@@ -43,6 +46,8 @@ export const ComposeEmailModal: React.FC<Props> = ({ isOpen, onClose, accounts, 
         method: "POST",
         body: JSON.stringify({
           fromEmail: fromEmail || undefined,
+          smtpPass: smtpPass.trim() || undefined,
+          saveToSettings,
           to,
           cc: cc.length > 0 ? cc : undefined,
           bcc: bcc.length > 0 ? bcc : undefined,
@@ -58,6 +63,7 @@ export const ComposeEmailModal: React.FC<Props> = ({ isOpen, onClose, accounts, 
       setToText("");
       setSubject("");
       setBodyText("");
+      setSmtpPass("");
     } catch (err) {
       notify(err instanceof Error ? err.message : "Đã có lỗi xảy ra khi gửi email.", "error");
     } finally {
@@ -85,6 +91,7 @@ export const ComposeEmailModal: React.FC<Props> = ({ isOpen, onClose, accounts, 
           borderRadius: "16px",
           width: "100%",
           maxWidth: "640px",
+          maxHeight: "90vh",
           boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)",
           overflow: "hidden",
           display: "flex",
@@ -136,7 +143,7 @@ export const ComposeEmailModal: React.FC<Props> = ({ isOpen, onClose, accounts, 
         </div>
 
         {/* Modal Body */}
-        <form onSubmit={handleSubmit} style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "14px" }}>
+        <form onSubmit={handleSubmit} style={{ padding: "20px", display: "flex", flexDirection: "column", gap: "14px", overflowY: "auto" }}>
           <div>
             <label style={{ display: "block", fontSize: "13px", fontWeight: 600, color: "#334155", marginBottom: "4px" }}>
               Từ Gmail (From)
@@ -159,6 +166,42 @@ export const ComposeEmailModal: React.FC<Props> = ({ isOpen, onClose, accounts, 
                 </option>
               ))}
             </select>
+          </div>
+
+          {/* Config SMTP App Password option inside Modal */}
+          <div style={{ background: "#f8fafc", padding: "12px 14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "#475569", display: "flex", alignItems: "center", gap: "6px" }}>
+                <KeyRound size={14} color="#4f46e5" /> Mật khẩu ứng dụng Gmail (App Password 16 ký tự)
+              </span>
+              <button
+                type="button"
+                style={{ border: "none", background: "transparent", color: "#4f46e5", fontSize: "12px", cursor: "pointer", fontWeight: 600 }}
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                {showAdvanced ? "Thu gọn" : "Cấu hình gửi riêng ▼"}
+              </button>
+            </div>
+
+            {(showAdvanced || !smtpPass) && (
+              <div style={{ marginTop: "8px", display: "flex", flexDirection: "column", gap: "6px" }}>
+                <input
+                  type="password"
+                  value={smtpPass}
+                  onChange={(e) => setSmtpPass(e.target.value)}
+                  placeholder="Nhập 16 ký tự Mật khẩu ứng dụng (App Password) của Gmail gửi..."
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: "6px", border: "1px solid #cbd5e1", fontSize: "13px" }}
+                />
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "12px", color: "#64748b", marginTop: "2px", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={saveToSettings}
+                    onChange={(e) => setSaveToSettings(e.target.checked)}
+                  />
+                  <span>Tự động lưu mật khẩu này vào phần Cài Đặt để dùng lại lần sau</span>
+                </label>
+              </div>
+            )}
           </div>
 
           <div>

@@ -334,12 +334,16 @@ export async function sendEmailMessage(userId: string, options: EmailOptions, ov
 
 export interface CustomSendEmailInput {
   fromEmail?: string;
+  smtpPass?: string;
+  smtpHost?: string;
+  smtpPort?: number;
   to: string[];
   cc?: string[];
   bcc?: string[];
   subject: string;
   bodyText?: string;
   bodyHtml?: string;
+  saveToSettings?: boolean;
 }
 
 export async function sendCustomEmail(userId: string, input: CustomSendEmailInput) {
@@ -350,20 +354,46 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
 
   const user = input.fromEmail?.trim() || dbConfig?.smtpUser || "";
 
-  let pass: string | undefined = undefined;
-  if (dbConfig?.smtpPassEncrypted) {
+  let pass: string | undefined = input.smtpPass?.trim();
+  if (!pass && dbConfig?.smtpPassEncrypted) {
     pass = decryptSecret(dbConfig.smtpPassEncrypted);
   }
 
-  const host = dbConfig?.smtpHost || "smtp.gmail.com";
-  const port = dbConfig?.smtpPort || 587;
+  const host = input.smtpHost?.trim() || dbConfig?.smtpHost || "smtp.gmail.com";
+  const port = input.smtpPort || dbConfig?.smtpPort || 587;
 
   if (!user || !pass) {
     throw new ApiError(
       400,
-      "Vui lòng nhập Email gửi và Mật khẩu ứng dụng (App Password 16 ký tự) trong mục Cài đặt trước khi soạn gửi email.",
+      "Vui lòng nhập Mật khẩu ứng dụng Gmail (App Password 16 ký tự) để thực hiện gửi email.",
       "SMTP_CREDENTIALS_REQUIRED"
     );
+  }
+
+  // Tự động lưu mật khẩu vào cài đặt nếu người dùng yêu cầu hoặc chưa cài đặt
+  if (input.smtpPass?.trim() && (input.saveToSettings || !dbConfig?.smtpPassEncrypted)) {
+    try {
+      await prisma.autoForwardConfig.upsert({
+        where: { userId },
+        create: {
+          userId,
+          enabled: true,
+          targetEmail: user,
+          smtpUser: user,
+          smtpHost: host,
+          smtpPort: port,
+          smtpPassEncrypted: encryptSecret(input.smtpPass.trim())
+        },
+        update: {
+          smtpUser: user,
+          smtpHost: host,
+          smtpPort: port,
+          smtpPassEncrypted: encryptSecret(input.smtpPass.trim())
+        }
+      });
+    } catch (err) {
+      console.error("[SendCustomEmail] Error saving pass to settings:", err);
+    }
   }
 
   console.log(`[SendCustomEmail] Sending custom email via Sonjj SMTP Relay to ${input.to.join(", ")}...`);
