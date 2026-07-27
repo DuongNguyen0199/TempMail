@@ -389,7 +389,7 @@ export async function sendCustomEmail(userId: string, input: CustomSendEmailInpu
       await axios.post(
         "https://api.resend.com/emails",
         {
-          from: headerFromEmail.includes("<") ? headerFromEmail : `${headerFromEmail.split("@")[0]} <${headerFromEmail}>`,
+          from: `Robert <${headerFromEmail.replace(/.*<|>/g, "")}>`,
           to: input.to,
           cc: input.cc,
           bcc: input.bcc,
