@@ -392,8 +392,13 @@ export function SettingsView({ notify }: { notify: (message: string, type?: "suc
               </div>
             )}
 
-            {mailProvider === "smtp" && (
-              <div style={{ marginTop: "12px" }}>
+            {(mailProvider === "sonjj" || mailProvider === "smtp") && (
+              <div style={{ marginTop: "12px", background: "#f8fafc", padding: "14px", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
+                {mailProvider === "sonjj" && (
+                  <p style={{ margin: 0, fontSize: "13px", color: "#4338ca", marginBottom: "12px", lineHeight: "1.5", fontWeight: 500 }}>
+                    💡 <strong>Cấu hình Master SMTP Relay:</strong> Nhập Email chính của bạn (ví dụ <code>duongrbt@gmail.com</code>) và Mật khẩu ứng dụng (App Password 16 ký tự). Sonjj sẽ sử dụng thông tin này làm máy chủ chuyển tiếp qua cổng HTTPS 443 không lo bị chặn!
+                  </p>
+                )}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px" }}>
                   <label className="key-field">
                     SMTP Host
